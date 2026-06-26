@@ -937,6 +937,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
           <span class="tool-tag">按页拆分</span>
           <span class="tool-tag">范围选择</span>
           <span class="tool-tag">预览</span>
+          <span class="tool-tag">JPG导出</span>
           <span class="tool-tag">一键导出</span>
         </div>
       </div>
@@ -1459,6 +1460,13 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       <div class="export-filename-row" style="margin-top:12px;">
         <label>📄 导出文件名：</label>
         <input type="text" id="pdfSplitExportName" class="export-filename-input" placeholder="默认：拆页结果">
+      </div>
+      <div class="toggle-row" style="margin-top:10px;">
+        <div class="toggle-text">导出格式<small>PDF 保留原文件格式；JPG 会把拆分结果转成图片</small></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <label style="cursor:pointer;font-size:13px;"><input type="radio" name="pdfSplitExportFormat" value="pdf" checked onchange="pdfSplitUpdateExportFormat()"> PDF</label>
+          <label style="cursor:pointer;font-size:13px;margin-left:12px;"><input type="radio" name="pdfSplitExportFormat" value="jpg" onchange="pdfSplitUpdateExportFormat()"> JPG 图片</label>
+        </div>
       </div>
       <div class="btn-row">
         <button class="btn btn-primary" onclick="pdfSplitDownload()">📥 下载</button>
@@ -3802,6 +3810,24 @@ async function pdfSplitExecute(){
   showToast(`拆分完成！${pdfSplitResults.length} 个文件`,'success');
 }
 let pdfSplitResults=[];
+function pdfSplitCurrentExportFormat(){
+  return document.querySelector('input[name="pdfSplitExportFormat"]:checked')?.value||'pdf';
+}
+function pdfSplitUpdateExportFormat(){
+  const format=pdfSplitCurrentExportFormat();
+  const mode=document.querySelector('input[name="pdfSplitMode"]:checked')?.value;
+  const input=document.getElementById('pdfSplitExportName');
+  if(!input)return;
+  if(format==='jpg'){
+    input.placeholder=pdfSplitResults.length>1?'ZIP 文件名（内含 JPG 图片）':'JPG 文件名';
+  }else if(mode==='receipt'){
+    input.placeholder='每个回单单独命名';
+  }else if(mode==='each'){
+    input.placeholder='每个文件单独命名（第N页.pdf）';
+  }else{
+    input.placeholder='合并结果';
+  }
+}
 function pdfSplitRenderResults(mode){
   mode=mode||document.querySelector('input[name="pdfSplitMode"]:checked')?.value;
   let thumbs='';
@@ -3821,18 +3847,84 @@ function pdfSplitRenderResults(mode){
   });
   document.getElementById('pdfSplitPreviewThumbs').innerHTML=thumbs;
   document.getElementById('pdfSplitResultStats').innerHTML=`<div class="stat-item"><div class="stat-value">${pdfSplitResults.length}</div><div class="stat-label">拆分文件数</div></div>`;
-  if(mode==='receipt'){
-    document.getElementById('pdfSplitExportName').placeholder='每个回单单独命名';
-  }else if(mode==='each'){
-    document.getElementById('pdfSplitExportName').placeholder='每个文件单独命名（第N页.pdf）';
+  document.querySelector('input[name="pdfSplitExportFormat"][value="pdf"]').checked=true;
+  pdfSplitUpdateExportFormat();
+}
+function pdfSplitDataUrlToBytes(dataUrl){
+  const comma=dataUrl.indexOf(',');
+  const bin=atob(dataUrl.slice(comma+1));
+  const bytes=new Uint8Array(bin.length);
+  for(let i=0;i<bin.length;i++)bytes[i]=bin.charCodeAt(i);
+  return bytes;
+}
+async function pdfSplitRenderPageToJpgBytes(pageNum){
+  if(!pdfSplitJsDoc)throw new Error('PDF.js 未加载，无法导出 JPG');
+  const page=await pdfSplitJsDoc.getPage(pageNum);
+  const viewport=page.getViewport({scale:2.5});
+  const canvas=document.createElement('canvas');
+  canvas.width=Math.round(viewport.width);
+  canvas.height=Math.round(viewport.height);
+  const ctx=canvas.getContext('2d',{alpha:false});
+  ctx.fillStyle='#fff';
+  ctx.fillRect(0,0,canvas.width,canvas.height);
+  await page.render({canvasContext:ctx,viewport}).promise;
+  return pdfSplitDataUrlToBytes(canvas.toDataURL('image/jpeg',0.92));
+}
+async function pdfSplitResultToJpgEntry(result, idx, customName){
+  let bytes;
+  if(result.imgUrl){
+    bytes=pdfSplitDataUrlToBytes(result.imgUrl);
   }else{
-    document.getElementById('pdfSplitExportName').placeholder='合并结果';
+    bytes=await pdfSplitRenderPageToJpgBytes(result.pageNum);
+  }
+  let name;
+  if(customName&&pdfSplitResults.length===1){
+    name=pdfSplitSafeFileName(customName)+'.jpg';
+  }else{
+    const base=(result.baseName||result.name||`第${idx+1}页`).replace(/\.(pdf|jpg|jpeg)$/i,'');
+    name=pdfSplitSafeFileName(base)+'.jpg';
+  }
+  return {name,data:bytes};
+}
+async function pdfSplitDownloadJpg(customName){
+  const btn=document.querySelector('#pdfSplitResultCard .btn.btn-primary');
+  const oldText=btn?btn.textContent:'';
+  if(btn){btn.disabled=true;btn.textContent='正在生成 JPG…';}
+  try{
+    const entries=[];
+    for(let i=0;i<pdfSplitResults.length;i++){
+      entries.push(await pdfSplitResultToJpgEntry(pdfSplitResults[i],i,customName));
+    }
+    if(entries.length===1){
+      const a=document.createElement('a');
+      a.href=URL.createObjectURL(new Blob([entries[0].data],{type:'image/jpeg'}));
+      a.download=entries[0].name;
+      document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(a.href);
+      showToast('已下载 JPG','success');
+      return;
+    }
+    const zip=buildZip(entries);
+    const a=document.createElement('a');
+    a.href=URL.createObjectURL(zip);
+    const base=customName||pdfSplitFile.name.replace(/\.pdf$/i,'')+'_JPG';
+    a.download=pdfSplitSafeFileName(base)+'.zip';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(a.href);
+    showToast(`已打包下载 ${entries.length} 张 JPG`,'success');
+  }catch(e){
+    showToast('导出 JPG 失败：'+e.message,'error');
+    console.error(e);
+  }finally{
+    if(btn){btn.disabled=false;btn.textContent=oldText;}
   }
 }
 async function pdfSplitDownload(){
   if(!pdfSplitResults.length)return;
   const mode=document.querySelector('input[name="pdfSplitMode"]:checked')?.value;
   const customName=document.getElementById('pdfSplitExportName').value.trim();
+  if(pdfSplitCurrentExportFormat()==='jpg'){
+    await pdfSplitDownloadJpg(customName);
+    return;
+  }
   if(mode==='range'){
     // 合并选中页为一个PDF
     const subDoc=await PDFLib.PDFDocument.create();
@@ -3877,8 +3969,10 @@ function pdfSplitReset(){
   document.getElementById('pdfSplitRangeFrom').value='';
   document.getElementById('pdfSplitRangeTo').value='';
   document.getElementById('pdfSplitExportName').value='';
+  document.querySelector('input[name="pdfSplitExportFormat"][value="pdf"]').checked=true;
   document.querySelector('input[name="pdfSplitMode"][value="each"]').checked=true;
   pdfSplitUpdateMode(); // 重置回"每页一个文件"后同步隐藏回单设置，避免误导
+  pdfSplitUpdateExportFormat();
   closePdfPreview();
   showToast('已重置','info');
 }
