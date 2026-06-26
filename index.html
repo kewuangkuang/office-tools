@@ -211,10 +211,10 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     animation: pulse 8s ease-in-out infinite;
   }
   @keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.1); } }
-  .header h1 { font-size: 26px; font-weight: 700; position: relative; z-index: 1; }
+  .header-brand { position: relative; z-index: 1; display: inline-flex; flex-direction: column; align-items: center; gap: 6px; }
+  .header h1 { font-size: 26px; font-weight: 700; }
   .header p { font-size: 14px; opacity: 0.85; margin-top: 6px; position: relative; z-index: 1; }
   .designed-by {
-    position: absolute; top: 14px; left: 20px; z-index: 2;
     font-size: 11px; color: rgba(255,255,255,0.6); letter-spacing: 1px;
   }
   .header-right {
@@ -261,6 +261,46 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   .header-feedback-btn:hover {
     background: rgba(22,163,74,0.52);
   }
+  .header-changelog-btn {
+    color: white;
+    background: rgba(255,255,255,0.12);
+  }
+  .modal-mask {
+    position: fixed; inset: 0; z-index: 10000;
+    background: rgba(15,23,42,0.45);
+    display: none; align-items: center; justify-content: center;
+    padding: 18px;
+  }
+  .modal-mask.show { display: flex; }
+  .changelog-modal {
+    width: min(560px, 100%);
+    max-height: min(78vh, 620px);
+    overflow: hidden;
+    border-radius: 14px;
+    background: white;
+    border: 1px solid var(--gray-200);
+    box-shadow: 0 20px 70px rgba(0,0,0,0.24);
+    display: flex; flex-direction: column;
+  }
+  .changelog-modal-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 16px 18px;
+    border-bottom: 1px solid var(--gray-200);
+  }
+  .changelog-modal-header h2 {
+    font-size: 17px; color: var(--gray-800); font-weight: 700;
+  }
+  .changelog-close-btn {
+    width: 30px; height: 30px; border-radius: 50%;
+    border: 1px solid var(--gray-200); background: var(--gray-50);
+    cursor: pointer; color: var(--gray-600); font-size: 17px; line-height: 1;
+  }
+  .changelog-body { padding: 16px 18px 18px; overflow-y: auto; }
+  .changelog-entry { padding: 12px 0; border-bottom: 1px solid var(--gray-100); }
+  .changelog-entry:last-child { border-bottom: none; }
+  .changelog-date { font-size: 13px; font-weight: 700; color: var(--primary); margin-bottom: 8px; }
+  .changelog-entry ul { padding-left: 18px; }
+  .changelog-entry li { font-size: 13px; color: var(--gray-700); line-height: 1.65; margin-bottom: 4px; }
 
   /* ===== Container ===== */
   .container { max-width: 860px; margin: 0 auto; padding: 24px 16px 60px; }
@@ -688,6 +728,12 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     --gray-600: #9A9EB6; --gray-700: #B4B8D0; --gray-800: #D0D4EC; --gray-900: #E8ECFF;
   }
   body.theme-dark .header { background: linear-gradient(135deg, #2D3A8C 0%, #4C1D95 100%); }
+  body.theme-dark .changelog-modal { background: #1E2030; border-color: #3A3E52; }
+  body.theme-dark .changelog-modal-header { border-bottom-color: #3A3E52; }
+  body.theme-dark .changelog-modal-header h2 { color: #F5F7FA; }
+  body.theme-dark .changelog-close-btn { background: #252836; border-color: #3A3E52; color: #D1D5DB; }
+  body.theme-dark .changelog-entry { border-bottom-color: #2D3142; }
+  body.theme-dark .changelog-entry li { color: #D1D5DB; }
   body.theme-dark .card, body.theme-dark .tool-card { background: #1E2030; border-color: #2A2D40; }
   body.theme-dark .tool-card:hover { border-color: #7B8FF7; box-shadow: 0 8px 24px rgba(123,143,247,0.15); }
   body.theme-dark .tool-card h2 { color: #D0D4EC; }
@@ -876,7 +922,6 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 <body>
 
 <div class="header">
-  <div class="designed-by">designed by kk</div>
   <div class="header-right">
     <div class="theme-segment">
       <button class="theme-segment-btn active" onclick="setTheme('default')" id="themeDefault">日间</button>
@@ -885,10 +930,14 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     </div>
     <div class="header-action-row">
       <button class="header-local-btn header-feedback-btn" onclick="openFeedbackForm()" title="提交使用问题或改进建议">反馈问题</button>
+      <button class="header-local-btn header-changelog-btn" onclick="openChangelog()" title="查看最近更新">更新日志</button>
       <button class="header-local-btn" onclick="downloadLocalVersion()" id="headerLocalBtn" title="下载HTML文件到本地，数据只保存在你的电脑">💾 下载本地版</button>
     </div>
   </div>
-  <h1>📊 办公工具箱</h1>
+  <div class="header-brand">
+    <h1>📊 办公工具箱</h1>
+    <div class="designed-by">designed by kk</div>
+  </div>
 </div>
 
 <div class="container">
@@ -1785,6 +1834,33 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       </div>
     </div>
   </div>
+
+<div class="modal-mask" id="changelogModal" onclick="closeChangelog(event)">
+  <div class="changelog-modal" onclick="event.stopPropagation()">
+    <div class="changelog-modal-header">
+      <h2>更新日志</h2>
+      <button class="changelog-close-btn" onclick="closeChangelog()" aria-label="关闭">×</button>
+    </div>
+    <div class="changelog-body">
+      <div class="changelog-entry">
+        <div class="changelog-date">2026-06-26</div>
+        <ul>
+          <li>PDF 拆分支持导出 JPG 图片。</li>
+          <li>修复回单名称识别错误。</li>
+          <li>新增反馈入口，可以提交问题和建议。</li>
+          <li>清理已下线的 PDF 转 Excel 功能说明。</li>
+          <li>补充项目说明、隐私说明、安全说明和许可证。</li>
+        </ul>
+      </div>
+      <div class="changelog-entry">
+        <div class="changelog-date">更早</div>
+        <ul>
+          <li>上线 Excel 合并、Sheet 合并、PDF 合并、PDF 拆分、批量重命名、表格拆分、文件名汇总。</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
 
 <div class="toast-container" id="toastContainer"></div>
 
@@ -3355,8 +3431,10 @@ function pdfSplitLooksLikeIcbcReceipt(items){
 function pdfSplitCleanCrbName(s){
   s=String(s||'').replace(/\s+/g,'');
   // 万一 pdf 把下一字段也并进来了，遇到已知标签就截断
-  s=s.replace(/(付款人账号|收款人账号|账户子序号|付款行行名|收款行行名|币种|借贷|钞汇标志|现转标志|金额|附言|用途|打印).*$/,'');
+  s=s.replace(/(付款人名称|收款人名称|付款人账号|收款人账号|付款人帐号|收款人帐号|付款人开户行|收款人开户行|付款人开户户行|收款人开户户行|账户子序号|客户号|日期|业务编号|凭证号码|付款行行名|收款行行名|币种|借贷|钞汇标志|现转标志|金额|附言|用途|备注|附件|打印).*$/,'');
   s=s.replace(/^[:：]+/,'').replace(/[:：]+$/,'');
+  // 账号经常和名称贴在一起，名称里不应保留 8 位以上连续数字。
+  s=s.replace(/\d{8,}/g,'');
   return s.replace(/[^一-龥A-Za-z0-9（）()·]/g,'').slice(0,80);
 }
 function pdfSplitExtractCrbFields(items){
@@ -3432,14 +3510,20 @@ function pdfSplitExtractReceiptFieldsByLayout(items, w, h){
   return {amount,payer:payerName,payee:payeeName,rawText:[payerName,payeeName,smallAmountText,bigAmountText].filter(Boolean).join('\n')};
 }
 function pdfSplitCleanPartyName(name){
-  return pdfSplitSafeFileName(String(name||'')
+  let s=String(name||'')
     // 先去掉所有空格：合并格里"户名"标签常被拆成"户 名"夹在名字两行之间，带空格会让下面的剥离漏掉它
-    .replace(/\s+/g,'')
-    .replace(/付款人|收款人|付款方|收款方|户名|账号|开户银行|金额大写|金额|摘要|用途|业务产品种类|业务种类|付款|收款/g,'')
+    .replace(/\s+/g,'');
+  // 如果同一格串进了下一个字段，先剥开头标签，再截断后续标签，避免"付款人名称A收款人名称B"被洗成"AB"。
+  s=s.replace(/^(付款人名称|收款人名称|付款人|收款人|付款方|收款方|户名|名称)[:：]?/,'');
+  s=s.replace(/(付款人名称|收款人名称|付款人账号|收款人账号|付款人帐号|收款人帐号|开户银行|开户行|金额大写|金额|摘要|用途|业务产品种类|业务种类|备注|附件).*$/,'');
+  s=s
+    .replace(/付款人|收款人|付款方|收款方|户名|名称|账号|帐号|开户银行|开户行|金额大写|金额|摘要|用途|业务产品种类|业务种类|付款|收款/g,'')
+    .replace(/\d{8,}/g,'')
     .replace(/^[户名\s]+/g,'')
     .replace(/[户名\s]+$/g,'')
     .replace(/[^\u4e00-\u9fa5A-Za-z0-9（）()·]/g,'')
-    .trim());
+    .trim();
+  return pdfSplitSafeFileName(s);
 }
 function pdfSplitPickBetween(text, start, endWords){
   const s=text.indexOf(start);
@@ -4480,6 +4564,17 @@ function splitClearAll() {
   if(!splitWB){ showToast('当前没有文件可清除','info'); return; }
   splitReset();
 }
+
+function openChangelog(){
+  document.getElementById('changelogModal')?.classList.add('show');
+}
+function closeChangelog(event){
+  if(event&&event.target&&event.target.id!=='changelogModal')return;
+  document.getElementById('changelogModal')?.classList.remove('show');
+}
+document.addEventListener('keydown', e => {
+  if(e.key==='Escape')closeChangelog();
+});
 
 // Init
 multiToggleSource(); sheetToggleSource();
