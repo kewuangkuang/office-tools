@@ -3420,11 +3420,13 @@ function pdfSplitLinesFromRegion(items, box){
 function pdfSplitRegionText(items, box){
   return pdfSplitLinesFromRegion(items,box).join('').replace(/\s+/g,'').trim();
 }
-function pdfSplitLooksLikeIcbcReceipt(items){
+function pdfSplitLooksLikeGridReceipt(items){
   const text=items.map(it=>it.text).join('').replace(/\s+/g,'');
-  const nameLabels=(text.match(/户名/g)||[]).length;
+  const nameLabels=(text.match(/户名|全称/g)||[]).length;
   const accountLabels=(text.match(/账号|帐号/g)||[]).length;
-  return /中国工商银行|工商银行|网上银行电子回单/.test(text) && nameLabels>=2 && accountLabels>=2;
+  const hasPartyLabels=/付款人/.test(text)&&/收款人/.test(text);
+  const hasKnownTitle=/中国工商银行|工商银行|中国建设银行|建设银行|北京银行|中国光大银行|光大银行|网上银行电子回单|电子回单|单位客户专用回单/.test(text);
+  return hasKnownTitle && accountLabels>=2 && (nameLabels>=2||hasPartyLabels);
 }
 // 成都农商行「客户回单」版式：标签:值都在单行，如"付款人名称:成都维特大药房…"。
 // 跟工行的合并格完全不同，单独识别。收款人名称可能为空（如付手续费的回单）。
@@ -3440,6 +3442,7 @@ function pdfSplitCleanCrbName(s){
 function pdfSplitExtractCrbFields(items){
   const all=items.map(it=>it.text).join('').replace(/\s+/g,'');
   if(!/付款人名称|客户回单/.test(all)) return null;
+  const fieldLabelRe=/(交易日期|业务种类|交易机构|平台流水号|付款人名称|收款人名称|付款人账号|收款人账号|付款人帐号|收款人帐号|付款人开户行|收款人开户行|付款人开户户行|收款人开户户行|账户子序号|客户号|日期|业务编号|凭证号码|付款行行名|收款行行名|币种|借贷|钞汇标志|现转标志|现钞标志|金额|附言|用途|备注|附件|打印|设备编号)/;
   const rows=[];
   const tol=6;
   items.slice().sort((a,b)=>a.y-b.y||a.x-b.x).forEach(it=>{
@@ -3448,21 +3451,51 @@ function pdfSplitExtractCrbFields(items){
     else rows.push({y:it.y,items:[it]});
   });
   rows.forEach(r=>{ r.items.sort((a,b)=>a.x-b.x); r.text=r.items.map(it=>it.text).join('').replace(/\s+/g,''); });
-  // 取"标签:"之后、到该行右半区另一字段（账户子序号等，x≥页面中部）之前的值
-  const valueAfter=function(re){
-    const row=rows.find(r=>re.test(r.text));
+  const medianGap=rows.length>1?rows.slice(1).map((r,i)=>r.y-rows[i].y).filter(g=>g>0).sort((a,b)=>a-b)[Math.floor((rows.length-1)/2)]||18:18;
+  const allXs=items.map(it=>it.x).filter(x=>Number.isFinite(x));
+  const pageMid=allXs.length?(Math.min(...allXs)+Math.max(...allXs))/2:0;
+  // 取"标签:"之后、到同一行下一个标签之前；如果下一行没有任何字段标签，则视为名称续行。
+  // continuationSide 只在中行这种左右两栏版式使用；客户回单标签版不限制左右栏。
+  const valueAfter=function(re, stopRe, continuationSide){
+    const rowIndex=rows.findIndex(r=>re.test(r.text));
+    if(rowIndex<0)return '';
+    const row=rows[rowIndex];
     if(!row)return '';
     const m=row.text.match(re);
-    return m?row.text.slice(m.index+m[0].length):'';
+    if(!m)return '';
+    let value=row.text.slice(m.index+m[0].length);
+    const stop=value.search(stopRe||fieldLabelRe);
+    if(stop>=0)value=value.slice(0,stop);
+    if(continuationSide!==false){
+      for(let i=rowIndex+1;i<rows.length;i++){
+        const gap=rows[i].y-rows[i-1].y;
+        if(gap>medianGap*1.7)break;
+        const text=rows[i].text;
+        if(!text||fieldLabelRe.test(text))break;
+        const xs=rows[i].items.map(it=>it.x).filter(x=>Number.isFinite(x));
+        if(xs.length&&(continuationSide==='left'||continuationSide==='right')){
+          const minX=Math.min(...xs);
+          if(continuationSide==='left'&&minX>=pageMid)break;
+          if(continuationSide==='right'&&minX<pageMid)break;
+        }
+        value+=text;
+        // 名称续行通常只有一两行；补到第一条无标签续行就够，避免继续吃到其他说明文字。
+        break;
+      }
+    }
+    return value;
   };
-  const payer=pdfSplitCleanCrbName(valueAfter(/付款人名称[:：]?/));
-  const payee=pdfSplitCleanCrbName(valueAfter(/收款人名称[:：]?/));
-  const amtRow=rows.find(r=>/金额[:：]/.test(r.text));
+  const payerRow=rows.find(r=>/付款人名称[:：]?/.test(r.text));
+  const payeeRow=rows.find(r=>/收款人名称[:：]?/.test(r.text));
+  const twoPartySameRow=!!(payerRow&&payeeRow&&Math.abs(payerRow.y-payeeRow.y)<tol*1.5);
+  const payer=pdfSplitCleanCrbName(valueAfter(/付款人名称[:：]?/,/(收款人名称|收款人账号|收款人帐号|收款人开户行|收款人开户户行|金额|用途|备注|附件|打印)/,twoPartySameRow?'left':undefined));
+  const payee=pdfSplitCleanCrbName(valueAfter(/收款人名称[:：]?/,/(付款人开户行|收款人开户行|付款人开户户行|收款人开户户行|金额|用途|备注|附件|打印)/,twoPartySameRow?'right':undefined));
+  const amtRow=rows.find(r=>/金额[:：]/.test(r.text)||(/金额/.test(r.text)&&(/[¥￥]/.test(r.text)||/[圆元]/.test(r.text)||/\d/.test(r.text))));
   const amount=amtRow?pdfSplitExtractAmount(amtRow.text,[amtRow.text]):'';
   return {amount,payer,payee,rawText:[payer,payee].filter(Boolean).join('\n'),crb:true};
 }
 function pdfSplitExtractReceiptFieldsByLayout(items, w, h){
-  if(!pdfSplitLooksLikeIcbcReceipt(items)){
+  if(!pdfSplitLooksLikeGridReceipt(items)){
     const crb=pdfSplitExtractCrbFields(items);
     if(crb) return crb;
     return {amount:'',payer:'',payee:'',rawText:''};
@@ -3476,34 +3509,49 @@ function pdfSplitExtractReceiptFieldsByLayout(items, w, h){
   });
   rows.forEach(r=>{ r.items.sort((a,b)=>a.x-b.x); r.text=r.items.map(it=>it.text).join('').replace(/\s+/g,''); });
 
-  const nameRow=rows.find(r=>/户名/.test(r.text)||(/户/.test(r.text)&&/名/.test(r.text)&&!/(开户|账号|帐号)/.test(r.text)));
+  const nameRow=rows.find(r=>/(户名|全称)/.test(r.text)&&!/(开户|账号|帐号)/.test(r.text))
+    ||rows.find(r=>/付款人/.test(r.text)&&/收款人/.test(r.text)&&!/(账号|帐号|金额|开户)/.test(r.text));
   const amountRow=rows.find(r=>/金额/.test(r.text)&&(/[¥￥]/.test(r.text)||/人民币/.test(r.text)||/\d/.test(r.text)));
   const yPad=Math.max(12,h*0.028);
   const regionAround=function(row,x1,x2){
     if(!row)return '';
     return pdfSplitRegionText(items,{x1,x2,y1:row.y-yPad,y2:row.y+yPad});
   };
+  const isIcbc=/中国工商银行|工商银行/.test(items.map(it=>it.text).join('').replace(/\s+/g,''));
   // 户名是合并单元格，长名字（如"四川杏林医药连锁有限责任公司广元蜀门北路店"）会换行到第二行。
   // 两个难点：①第二行会被漏掉 ②固定比例切左右栏太脆，会把开头的"四川杏林"切掉。
   // 解决：纵向圈到"账号"行上沿把整格读进来；横向用真实"户名"标签的 x 当左右两栏分界线。
   const nameIdx=nameRow?rows.indexOf(nameRow):-1;
   const acctRow=nameIdx>=0?rows.find((r,i)=>i>nameIdx&&/(账号|帐号|开户银行)/.test(r.text)):null;
   const nameY1=nameRow?nameRow.y-yPad:0;
-  const nameY2=nameRow?(acctRow?Math.max(nameRow.y+yPad,acctRow.y-yPad):nameRow.y+yPad):0;
-  // 在户名行里找"户名"标签（可能是整词"户名"，也可能被拆成"户""名"两个字）。
-  // 工行回单左右两栏各有一个，取最靠右那个的 x 作为分界：左边=付款人，右边=收款人。
-  const huItems=(nameRow?nameRow.items:[]).filter(it=>/户/.test(it.text)).sort((a,b)=>a.x-b.x);
-  const divider=huItems.length>=2?(huItems[huItems.length-1].x-2):w*0.56;
+  // 不要把账号行上沿扣太多，否则两行户名的第二行（如"市河阳路药店"）会被截掉。
+  const nameBottomPad=Math.max(4,h*0.006);
+  const nameY2=nameRow?(acctRow?Math.max(nameRow.y+yPad,acctRow.y-nameBottomPad):nameRow.y+yPad*1.8):0;
+  // 在名称行里找左右两个标签（户名/全称/付款人/收款人），取右侧标签 x 作为分界。
+  // 工行、建行、北京银行、光大等表格型回单都按这个区域切，不和"付款人名称:"标签版混用。
+  const labelItems=(nameRow?nameRow.items:[]).filter(it=>/(户|全|付款人|收款人)/.test(it.text)).sort((a,b)=>a.x-b.x);
+  const rightLabel=labelItems.find(it=>it.x>w*0.42);
+  const divider=rightLabel?(rightLabel.x-2):(labelItems.length>=2?(labelItems[labelItems.length-1].x-2):w*0.56);
+  const labelXs=labelItems.map(it=>it.x).filter(x=>Number.isFinite(x)).sort((a,b)=>a-b);
+  const payerLabelRight=labelXs.filter(x=>x<divider).pop()||0;
+  const payeeLabelRight=labelXs.filter(x=>x>=divider).pop()||divider;
+  const payerX1=isIcbc?Math.max(0,payerLabelRight+4):-1e9;
+  const payerX2=isIcbc?divider:divider;
+  const payeeX1=isIcbc?Math.max(divider,payeeLabelRight+4):divider;
+  const payeeX2=1e9;
   // 取整格文字：按 y 分行、行内按 x 排序再拼接，保证"第一行+第二行"顺序正确。
   const cellText=function(xMin,xMax){
     if(!nameRow)return '';
-    const sel=items.filter(it=>it.y>=nameY1&&it.y<=nameY2&&it.x>=xMin&&it.x<xMax)
+    // 工行的户名第二行有时被 PDF 放到接近"账号"行的位置；这里允许吃到账号行上半段。
+    // 后面 clean 会删除长账号数字，但能保住"市河阳路药店"这种续行。
+    const y2=isIcbc&&acctRow?acctRow.y+yPad*0.35:nameY2;
+    const sel=items.filter(it=>it.y>=nameY1&&it.y<=y2&&it.x>=xMin&&it.x<xMax)
                    .map(it=>({text:it.text,x:it.x,y:it.y}));
     return pdfSplitGroupTextItems(sel).join('');
   };
   // cleanPartyName 会自动剥掉"付款人/收款人/户名"等标签字，所以左半格连标签一起圈进来也无妨。
-  const payerName=pdfSplitCleanPartyName(cellText(-1e9,divider));
-  const payeeName=pdfSplitCleanPartyName(cellText(divider,1e9));
+  const payerName=pdfSplitCleanPartyName(cellText(payerX1,payerX2));
+  const payeeName=pdfSplitCleanPartyName(cellText(payeeX1,payeeX2));
   const smallAmountText=regionAround(amountRow,w*0.18,w*0.50);
   const bigAmountText=regionAround(amountRow,w*0.58,w*0.99);
   const amount=pdfSplitExtractAmount(smallAmountText+bigAmountText,[smallAmountText,bigAmountText]);
@@ -3514,12 +3562,13 @@ function pdfSplitCleanPartyName(name){
     // 先去掉所有空格：合并格里"户名"标签常被拆成"户 名"夹在名字两行之间，带空格会让下面的剥离漏掉它
     .replace(/\s+/g,'');
   // 如果同一格串进了下一个字段，先剥开头标签，再截断后续标签，避免"付款人名称A收款人名称B"被洗成"AB"。
-  s=s.replace(/^(付款人名称|收款人名称|付款人|收款人|付款方|收款方|户名|名称)[:：]?/,'');
+  s=s.replace(/^(付款人名称|收款人名称|付款人|收款人|付款方|收款方|户名|全称|名称)[:：]?/,'');
   s=s.replace(/(付款人名称|收款人名称|付款人账号|收款人账号|付款人帐号|收款人帐号|开户银行|开户行|金额大写|金额|摘要|用途|业务产品种类|业务种类|备注|附件).*$/,'');
   s=s
-    .replace(/付款人|收款人|付款方|收款方|户名|名称|账号|帐号|开户银行|开户行|金额大写|金额|摘要|用途|业务产品种类|业务种类|付款|收款/g,'')
+    .replace(/付款人|收款人|付款方|收款方|户名|全称|名称|账号|帐号|开户银行|开户行|金额大写|金额|摘要|用途|业务产品种类|业务种类|付款|收款/g,'')
     .replace(/\d{8,}/g,'')
-    .replace(/^[户名\s]+/g,'')
+    // 右侧竖排"收款人/付款人"标签偶尔残一两个标签字混进名称开头，按通用标签字剥掉（不写死任何公司/门店名）。
+    .replace(/^[户名人志\s]+/g,'')
     .replace(/[户名\s]+$/g,'')
     .replace(/[^\u4e00-\u9fa5A-Za-z0-9（）()·]/g,'')
     .trim();
@@ -3634,8 +3683,11 @@ function pdfSplitExtractReceiptFields(lines){
     });
   }
   const namesFromLabels=pdfSplitExtractNamesFromCompact(compact);
-  const payer=namesFromLabels[0]||candidates[0]||'';
-  const payee=namesFromLabels[1]||candidates.find((c,idx)=>idx>0&&c!==payer)||candidates[1]||'';
+  const payerRaw=namesFromLabels[0]||candidates[0]||'';
+  const payeeRaw=namesFromLabels[1]||candidates.find((c,idx)=>idx>0&&c!==payerRaw)||candidates[1]||'';
+  // 不管走哪条分支，都过一遍通用清洗：剥掉竖排标签残字（如"志"）、标签词、长账号数字——不写死任何公司名。
+  const payer=pdfSplitCleanPartyName(payerRaw);
+  const payee=pdfSplitCleanPartyName(payeeRaw);
   return {amount,payer,payee,rawText:joined};
 }
 async function pdfSplitOcrReceiptCanvas(canvas, fallbackLines, layoutFields){
@@ -3693,6 +3745,14 @@ function pdfSplitFinalizeReceiptNames(results){
     }
     r.name=base+'.pdf';
   });
+}
+// 用户在结果区手动改某张回单的文件名：存进 baseName，再统一去重生成最终 name（导出 PDF/JPG 都用它）。
+function pdfSplitSetReceiptName(i, val){
+  const r=pdfSplitResults[i];
+  if(!r)return;
+  r.baseName=pdfSplitSafeFileName(String(val||'').trim())||('回单'+(i+1));
+  r.userEditedName=true;
+  pdfSplitFinalizeReceiptNames(pdfSplitResults);
 }
 
 async function pdfSplitRenderPages(){
@@ -3920,12 +3980,16 @@ function pdfSplitRenderResults(mode){
     const url=URL.createObjectURL(blob);
     const label=mode==='receipt'?`${r.name.replace(/\.pdf$/i,'')}`:`第 ${r.pageNum} 页`;
     const meta=mode==='receipt'&&r.fields?`<div style="font-size:10px;color:var(--gray-500);line-height:1.35;margin-top:2px;text-align:left;">金额：${esc(r.fields.amount||'未识别')}<br>付款：${esc(r.fields.payer||'未识别')}<br>收款：${esc(r.fields.payee||'未识别')}</div>`:'';
+    // 回单模式：文件名做成可编辑框，认错了当场改，改完直接导出（比死磕自动识别稳）。
+    const nameField=mode==='receipt'
+      ? `<input type="text" value="${esc(r.baseName||label)}" onchange="pdfSplitSetReceiptName(${i}, this.value)" title="文件名——识别错了直接在这里改" style="width:110px;font-size:11px;text-align:center;margin-top:4px;padding:3px 4px;border:1px solid var(--gray-300);border-radius:5px;color:var(--gray-700);outline:none;background:var(--card-bg,#fff);">`
+      : `<div style="font-size:11px;color:var(--gray-700);margin-top:4px;word-break:break-all;">${esc(label)}</div>`;
     thumbs+=`<div style="width:110px;text-align:center;flex-shrink:0;">
       <div style="width:110px;height:140px;border:1px solid var(--gray-200);border-radius:6px;overflow:hidden;position:relative;background:var(--gray-100);line-height:0;">
         <iframe src="${url}#toolbar=0&navpanes=0" style="position:absolute;top:0;left:0;width:340px;height:490px;border:none;pointer-events:none;transform:scale(0.324);transform-origin:top left;z-index:1;"></iframe>
         <button class="sheet-preview-btn" onclick="event.stopPropagation();pdfSplitResultPreview(${i})" title="悬浮预览" style="position:absolute;top:3px;right:3px;background:rgba(255,255,255,0.96);border:1px solid var(--gray-300);width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-size:14px;z-index:2;padding:0;box-shadow:0 2px 8px rgba(0,0,0,0.15);">👁️</button>
       </div>
-      <div style="font-size:11px;color:var(--gray-700);margin-top:4px;word-break:break-all;">${esc(label)}</div>
+      ${nameField}
       ${meta}
     </div>`;
   });
