@@ -15,7 +15,6 @@
 - 批量重命名，并打包成 ZIP 下载
 - 大表拆分，支持按列值或固定行数拆分
 - 文件名汇总，导出 Excel 清单
-- PDF 转 Excel，文字版 PDF 直接提取，扫描件可尝试 OCR 识别
 
 ## 使用方式
 
@@ -42,13 +41,13 @@
 | Excel 合并 / Sheet 合并 / 表格拆分 | 否 | 浏览器本地读取和导出 |
 | PDF 合并 / PDF 拆分 | 否 | 浏览器本地处理 |
 | 批量重命名 / 文件名汇总 | 否 | 浏览器本地处理 |
-| OCR 识别 | 需要联网 | 首次使用会从 CDN 加载 `tesseract.js` 和 OCR 语言包 |
+| 部分 PDF 回单识别场景 | 需要联网 | 如触发 OCR，会从 CDN 加载 `tesseract.js` 和 OCR 语言包 |
 
 ## 网络要求
 
 普通 Excel / PDF 功能主要在浏览器本地运行。
 
-OCR 功能依赖 `tesseract.js`，当前通过 CDN 加载：
+部分 PDF 回单识别场景可能会用到 OCR。OCR 依赖 `tesseract.js`，当前通过 CDN 加载：
 
 ```html
 https://cdn.jsdelivr.net/npm/tesseract.js@5.0.4/dist/tesseract.min.js
@@ -56,8 +55,8 @@ https://cdn.jsdelivr.net/npm/tesseract.js@5.0.4/dist/tesseract.min.js
 
 因此：
 
-- 能联网时：OCR 可以自动加载识别引擎和语言包。
-- 断网或公司内网限制 CDN 时：普通功能可用，OCR 可能失败。
+- 能联网时：需要 OCR 的识别场景可以自动加载识别引擎和语言包。
+- 断网或公司内网限制 CDN 时：普通功能可用，需要 OCR 的识别场景可能失败。
 - 处理敏感文件时：建议下载源码后本地打开 `index.html` 使用。
 
 ## 隐私说明
@@ -66,7 +65,7 @@ https://cdn.jsdelivr.net/npm/tesseract.js@5.0.4/dist/tesseract.min.js
 
 需要注意：
 
-- OCR 功能会加载第三方 CDN 脚本和语言包。
+- 部分 PDF 回单识别场景会加载第三方 CDN 脚本和语言包。
 - 如果你访问的是别人部署的网站，浏览器仍会向该网页地址和第三方 CDN 发起请求。
 - 处理财务、合同、身份证、银行回单等敏感文件时，建议下载本仓库后在本地打开 `index.html`。
 
@@ -78,7 +77,7 @@ https://cdn.jsdelivr.net/npm/tesseract.js@5.0.4/dist/tesseract.min.js
 
 - `index.html`：页面、样式、业务逻辑
 - 内联库：SheetJS、ExcelJS、pdf-lib、PDF.js 等
-- 在线库：Tesseract.js，用于 OCR
+- 在线库：Tesseract.js，用于部分 PDF 回单 OCR 识别场景
 
 没有后端服务，没有数据库，没有 API Key。
 
