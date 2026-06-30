@@ -152,7 +152,6 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     window.pdfjsLib.GlobalWorkerOptions.workerSrc=URL.createObjectURL(__pwblob);
   }
 </script>
-<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.0.4/dist/tesseract.min.js"></script>
 <style>
   :root {
     --primary: #4F6EF7;
@@ -1946,6 +1945,21 @@ function showToast(msg,type){
   t.innerHTML=(type==='success'?'✅ ':'❌ ')+msg;
   c.appendChild(t); setTimeout(()=>{ t.style.opacity='0'; setTimeout(()=>t.remove(),300); },3000);
 }
+const TESSERACT_CDN_URL='https://cdn.jsdelivr.net/npm/tesseract.js@5.0.4/dist/tesseract.min.js';
+let tesseractLoadPromise=null;
+function ensureTesseractLoaded(){
+  if(window.Tesseract)return Promise.resolve(true);
+  if(tesseractLoadPromise)return tesseractLoadPromise;
+  tesseractLoadPromise=new Promise(resolve=>{
+    const s=document.createElement('script');
+    s.src=TESSERACT_CDN_URL;
+    s.async=true;
+    s.onload=()=>resolve(!!window.Tesseract);
+    s.onerror=()=>resolve(false);
+    document.head.appendChild(s);
+  });
+  return tesseractLoadPromise;
+}
 
 // ==========================================
 // TOOL 1: MULTI-FILE MERGE
@@ -3738,7 +3752,7 @@ async function pdfSplitOcrReceiptCanvas(canvas, fallbackLines, layoutFields){
   const needsOcr=layoutFields&&layoutFields.crb
     ? (!fields.amount||!fields.payer)
     : (!fields.amount||!fields.payer||!fields.payee||lines.join('').length<12);
-  if(needsOcr && window.Tesseract){
+  if(needsOcr && await ensureTesseractLoaded()){
     try{
       const result=await Tesseract.recognize(canvas,'chi_sim+eng');
       const text=result?.data?.text||'';
@@ -3754,6 +3768,8 @@ async function pdfSplitOcrReceiptCanvas(canvas, fallbackLines, layoutFields){
         };
       }
     }catch(e){ console.warn('回单 OCR 失败',e); }
+  }else if(needsOcr){
+    console.warn('OCR 引擎加载失败，已跳过图片识别');
   }
   return fields;
 }
