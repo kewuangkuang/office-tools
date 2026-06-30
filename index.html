@@ -4263,11 +4263,15 @@ async function pdfSplitResultPreview(i){
   if(!pdfSplitResults[i])return;
   const panel=document.getElementById('pdfPreviewPanel');
   if(currentPdfPreviewIndex==='result-'+i && panel.style.display!=='none'){ closePdfPreview(); return; }
-  const blob=new Blob([pdfSplitResults[i].bytes],{type:'application/pdf'});
-  const url=URL.createObjectURL(blob);
   const body=document.getElementById('pdfPreviewPanelBody');
   const title=document.getElementById('pdfPreviewPanelTitle');
-  body.innerHTML=`<iframe src="${url}#toolbar=0&navpanes=0" style="width:100%;height:100%;border:none;display:block;" frameborder="0"></iframe>`;
+  if(pdfSplitResults[i].imgUrl){
+    body.innerHTML=`<div style="width:100%;height:100%;overflow:auto;background:#252525;text-align:center;"><img src="${pdfSplitResults[i].imgUrl}" style="max-width:100%;height:auto;background:#fff;display:inline-block;"></div>`;
+  }else{
+    const blob=new Blob([pdfSplitResults[i].bytes],{type:'application/pdf'});
+    const url=URL.createObjectURL(blob);
+    body.innerHTML=`<iframe src="${url}#toolbar=0&navpanes=0" style="width:100%;height:100%;border:none;display:block;" frameborder="0"></iframe>`;
+  }
   title.textContent=`📄 第 ${pdfSplitResults[i].pageNum} 页预览`;
   panel.style.display='';
   currentPdfPreviewIndex='result-'+i;
@@ -4366,15 +4370,18 @@ async function pdfSplitExecute(){
         const layoutFields=pdfSplitExtractReceiptFieldsByLayout(cropItems,sw,sh);
         const fields=await pdfSplitOcrReceiptCanvas(processed,cropLines,layoutFields);
 
-        const imgData=processed.toDataURL('image/jpeg',0.9);
+        // OCR 预处理图会二次白边裁切/矫正，适合识别但不适合当最终单据。
+        // 导出必须保完整，所以用标题/分块裁出来的原图；宁可多留白，也不能截漏财务单据。
+        const exportCanvas=cc;
+        const imgData=exportCanvas.toDataURL('image/jpeg',0.9);
         const imgBytes=await fetch(imgData).then(r=>r.arrayBuffer());
 
         const subDoc=await PDFLib.PDFDocument.create();
         let embeddedImg;
         try{ embeddedImg=await subDoc.embedJpg(imgBytes); }
         catch{ embeddedImg=await subDoc.embedPng(imgBytes); }
-        const imgPage=subDoc.addPage([processed.width,processed.height]);
-        imgPage.drawImage(embeddedImg,{x:0,y:0,width:processed.width,height:processed.height});
+        const imgPage=subDoc.addPage([exportCanvas.width,exportCanvas.height]);
+        imgPage.drawImage(embeddedImg,{x:0,y:0,width:exportCanvas.width,height:exportCanvas.height});
 
         const baseName=pdfSplitBuildReceiptBaseName(fields,receiptGlobalIdx);
         pdfSplitResults.push({name:baseName+'.pdf', baseName, bytes:await subDoc.save(), pageNum:pn, receiptIdx:n, receiptCount:receiptCrops.length, imgUrl:imgData, fields});
@@ -4441,9 +4448,12 @@ function pdfSplitRenderResults(mode){
     const nameField=mode==='receipt'
       ? `<input type="text" value="${esc(r.baseName||label)}" onchange="pdfSplitSetReceiptName(${i}, this.value)" title="文件名——识别错了直接在这里改" style="width:110px;font-size:11px;text-align:center;margin-top:4px;padding:3px 4px;border:1px solid var(--gray-300);border-radius:5px;color:var(--gray-700);outline:none;background:var(--card-bg,#fff);">`
       : `<div style="font-size:11px;color:var(--gray-700);margin-top:4px;word-break:break-all;">${esc(label)}</div>`;
+    const thumbContent=mode==='receipt'&&r.imgUrl
+      ? `<img src="${r.imgUrl}" style="width:100%;height:100%;object-fit:contain;background:#fff;display:block;">`
+      : `<iframe src="${url}#toolbar=0&navpanes=0" style="position:absolute;top:0;left:0;width:340px;height:490px;border:none;pointer-events:none;transform:scale(0.324);transform-origin:top left;z-index:1;"></iframe>`;
     thumbs+=`<div style="width:110px;text-align:center;flex-shrink:0;">
       <div style="width:110px;height:140px;border:1px solid var(--gray-200);border-radius:6px;overflow:hidden;position:relative;background:var(--gray-100);line-height:0;">
-        <iframe src="${url}#toolbar=0&navpanes=0" style="position:absolute;top:0;left:0;width:340px;height:490px;border:none;pointer-events:none;transform:scale(0.324);transform-origin:top left;z-index:1;"></iframe>
+        ${thumbContent}
         <button class="sheet-preview-btn" onclick="event.stopPropagation();pdfSplitResultPreview(${i})" title="悬浮预览" style="position:absolute;top:3px;right:3px;background:rgba(255,255,255,0.96);border:1px solid var(--gray-300);width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-size:14px;z-index:2;padding:0;box-shadow:0 2px 8px rgba(0,0,0,0.15);">👁️</button>
       </div>
       ${nameField}
