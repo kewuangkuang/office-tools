@@ -3497,28 +3497,43 @@ function pdfSplitAllTextItems(textContent, viewport){
     const text=String(it.str||'').trim();
     if(tx.length<6||!text)return;
     const p=viewport.convertToViewportPoint(tx[4], tx[5]);
-    items.push({text,x:p[0],y:p[1]});
+    const scale=viewport?.scale||1;
+    const h=Math.max(8, Math.abs(it.height||0)*scale, Math.abs(tx[3]||0)*scale);
+    const w=Math.max(0, Math.abs(it.width||0)*scale, String(text).length*h*0.5);
+    items.push({text,x:p[0],y:p[1],w,h,top:p[1]-h*0.85,bottom:p[1]+h*0.25});
   });
   return items;
 }
 // 找出页面上每张回单的"标题行"纵坐标（标题=显示"客户回单"或"网上银行电子回单"的那一行）。
 // 每张回单都从它自己的标题行开始，按标题切比按页高均分稳——回单在页面上常不是均匀排的。
 // 只认强标题词，避开印章里的"…电子回单专用章"等；相距很近的去重。
-function pdfSplitReceiptTitleYs(pageItems, pageH){
+function pdfSplitReceiptTitleRows(pageItems, pageH){
   const rowObjs=[];
   pageItems.slice().sort((a,b)=>a.y-b.y||a.x-b.x).forEach(it=>{
     let row=rowObjs.find(r=>Math.abs(r.y-it.y)<Math.max(10,pageH*0.012));
-    if(row){ row.items.push(it); row.y=(row.y+it.y)/2; }
-    else rowObjs.push({y:it.y,items:[it]});
+    if(row){
+      row.items.push(it);
+      row.y=(row.y+it.y)/2;
+      row.top=Math.min(row.top,it.top??it.y);
+      row.bottom=Math.max(row.bottom,it.bottom??it.y);
+    }else{
+      rowObjs.push({y:it.y,top:it.top??it.y,bottom:it.bottom??it.y,items:[it]});
+    }
   });
-  const ys=rowObjs
-    .map(r=>({y:r.y,text:r.items.map(it=>it.text).join('').replace(/\s+/g,'')}))
-    .filter(r=>/^客户回单$|网上银行电子回单/.test(r.text))
-    .map(r=>r.y)
-    .sort((a,b)=>a-b);
+  const rows=rowObjs
+    .map(r=>({y:r.y,top:r.top,bottom:r.bottom,text:r.items.map(it=>it.text).join('').replace(/\s+/g,'')}))
+    .filter(r=>{
+      if(/客户回单/.test(r.text))return true;
+      if(/网上银行电子回单/.test(r.text)&&!/专用章|印章/.test(r.text))return true;
+      return false;
+    })
+    .sort((a,b)=>a.y-b.y);
   const out=[];
-  ys.forEach(y=>{ if(!out.length||y-out[out.length-1]>pageH*0.1) out.push(y); });
+  rows.forEach(r=>{ if(!out.length||r.y-out[out.length-1].y>pageH*0.1) out.push(r); });
   return out;
+}
+function pdfSplitReceiptTitleYs(pageItems, pageH){
+  return pdfSplitReceiptTitleRows(pageItems,pageH).map(r=>r.y);
 }
 function pdfSplitAdaptiveReceiptCrop(pageItems, pageW, pageH, idx, count, dir){
   let band;
@@ -3587,11 +3602,16 @@ function pdfSplitAdaptiveReceiptCrop(pageItems, pageW, pageH, idx, count, dir){
 }
 function pdfSplitReceiptCropsForPage(pageItems, pageW, pageH, manualCount, dir){
   if(dir==='vertical'){
-    const tYs=pdfSplitReceiptTitleYs(pageItems,pageH);
-    if(tYs.length){
-      return tYs.map((y,idx)=>{
-        const top=Math.max(0,y-pageH*0.012);
-        const bot=idx<tYs.length-1?Math.max(top+pageH*0.05,tYs[idx+1]-pageH*0.006):pageH;
+    const titleRows=pdfSplitReceiptTitleRows(pageItems,pageH);
+    if(titleRows.length){
+      return titleRows.map((row,idx)=>{
+        const rowH=Math.max(10,row.bottom-row.top);
+        const nextRow=titleRows[idx+1];
+        const nextRowH=nextRow?Math.max(10,nextRow.bottom-nextRow.top):rowH;
+        const titlePad=Math.max(18,rowH*0.9);
+        const splitPad=Math.max(18,nextRowH*0.8);
+        const top=Math.max(0,row.top-titlePad);
+        const bot=idx<titleRows.length-1?Math.max(top+pageH*0.05,nextRow.top-splitPad):pageH;
         return {x:0,y:top,w:pageW,h:Math.min(pageH,bot)-top, detected:true};
       }).filter(c=>c.h>pageH*0.05);
     }
