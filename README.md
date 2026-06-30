@@ -53,23 +53,13 @@
 | Excel 合并 / Sheet 合并 / 表格拆分 | 否 | 浏览器本地读取和导出 |
 | PDF 合并 / PDF 拆分 | 否 | 浏览器本地处理 |
 | 批量重命名 / 文件名汇总 | 否 | 浏览器本地处理 |
-| 部分 PDF 回单识别场景 | 需要联网 | 如触发 OCR，会从 CDN 加载 `tesseract.js` 和 OCR 语言包 |
+| PDF 回单识别场景 | 否 | 使用浏览器本地 PDF 解析、转图和 PaddleOCR.js 适配层；不上传财务单据 |
 
 ## 网络要求
 
-普通 Excel / PDF 功能主要在浏览器本地运行。
+普通 Excel / PDF 功能、PDF 回单拆分、图片转换和 OCR 字段识别都在访客本地浏览器运行。服务器只提供静态网页资源，不接收、不保存用户上传的 PDF、图片或财务单据。
 
-部分 PDF 回单识别场景可能会用到 OCR。OCR 依赖 `tesseract.js`，当前通过 CDN 加载：
-
-```html
-https://cdn.jsdelivr.net/npm/tesseract.js@5.0.4/dist/tesseract.min.js
-```
-
-因此：
-
-- 能联网时：需要 OCR 的识别场景可以自动加载识别引擎和语言包。
-- 断网或公司内网限制 CDN 时：普通功能可用，需要 OCR 的识别场景可能失败。
-- 处理敏感文件时：建议下载源码后本地打开 `index.html` 使用。
+PDF 回单 OCR 使用 PaddleOCR.js 适配层。部署时需要把 PaddleOCR.js 及模型文件作为静态资源随网页一起提供；如果页面没有加载到这些本地资源，回单模式会只使用 PDF 文字层识别，并提示用户缺少本地 OCR 资源。
 
 ## 隐私说明
 
@@ -77,8 +67,8 @@ https://cdn.jsdelivr.net/npm/tesseract.js@5.0.4/dist/tesseract.min.js
 
 需要注意：
 
-- 部分 PDF 回单识别场景会加载第三方 CDN 脚本和语言包。
-- 如果你访问的是别人部署的网站，浏览器仍会向该网页地址和第三方 CDN 发起请求。
+- PDF 回单识别不主动上传文件到服务器，OCR 运算在浏览器本地完成。
+- 如果你访问的是别人部署的网站，浏览器仍会向该网页地址请求静态资源。
 - 处理财务、合同、身份证、银行回单等敏感文件时，建议下载本仓库后在本地打开 `index.html`。
 
 更完整说明见 [PRIVACY.md](./PRIVACY.md)。
@@ -89,7 +79,7 @@ https://cdn.jsdelivr.net/npm/tesseract.js@5.0.4/dist/tesseract.min.js
 
 - `index.html`：页面、样式、业务逻辑
 - 内联库：SheetJS、ExcelJS、pdf-lib、PDF.js 等
-- 在线库：Tesseract.js，用于部分 PDF 回单 OCR 识别场景
+- 本地静态资源：PaddleOCR.js 及模型文件，用于 PDF 回单 OCR 识别场景
 
 没有后端服务，没有数据库，没有 API Key。
 
