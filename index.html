@@ -1955,6 +1955,7 @@ let multiMergedData = null;
 let headerRows_raw = null; // 2D 多行表头原始数据
 let multiListExpanded = false;
 let multiSearchFilter = '';
+let multiIsReading = false;
 
 // Upload
 const multiZone = document.getElementById('multiUploadZone');
@@ -1970,9 +1971,9 @@ multiZone.addEventListener('drop',e=>{
   e.preventDefault(); e.stopPropagation(); multiZone.classList.remove('drag-over');
   multiHandleDropItems(e.dataTransfer.items,false);
 });
-multiInput.addEventListener('change',e=>{ if(e.target.files.length)multiHandleFiles(e.target.files); });
+multiInput.addEventListener('change',e=>{ if(e.target.files.length)multiHandleFiles(e.target.files); e.target.value=''; });
 const multiFolderInput = document.getElementById('multiFolderInput');
-multiFolderInput.addEventListener('change',e=>{ if(e.target.files.length)multiHandleFiles(e.target.files,true); });
+multiFolderInput.addEventListener('change',e=>{ if(e.target.files.length)multiHandleFiles(e.target.files,true); e.target.value=''; });
 document.addEventListener('paste',e=>{
   const items=e.clipboardData?.items; if(!items)return;
   const fs=[]; for(let i=0;i<items.length;i++){ if(items[i].kind==='file'){ const f=items[i].getAsFile(); if(f&&/\.(xlsx|xls|csv)$/i.test(f.name))fs.push(f); } }
@@ -2046,39 +2047,73 @@ async function multiTraverseEntry(entry,pathPrefix,files,extFilter){
   }
 }
 
+function multiSetUploadStatus(text){
+  const el=multiZone?.querySelector('.upload-text');
+  if(el) el.textContent=text||'拖拽文件/文件夹到此处，或点击选择';
+}
+
+function multiYield(){
+  return new Promise(resolve=>setTimeout(resolve,0));
+}
+
+async function multiReadWorkbookFile(f, keepFmt){
+  const relPath = f.webkitRelativePath || f.name;
+  const buf=await f.arrayBuffer();
+  await multiYield();
+  const wb=XLSX.read(new Uint8Array(buf),{type:'array',cellDates:keepFmt,cellNF:keepFmt,cellText:!keepFmt});
+  const sheets=wb.SheetNames.map(n=>{
+    const ws=wb.Sheets[n];
+    const d=XLSX.utils.sheet_to_json(ws,{header:1,defval:'',raw:keepFmt});
+    return {name:n,data:d,selected:true};
+  });
+  return {name:f.name,relPath,size:f.size,sheets};
+}
+
 async function multiHandleFiles(files, isFolder){
+  if(multiIsReading){
+    showToast('正在读取上一批文件，请稍等','info');
+    return;
+  }
+  const fileList=Array.from(files||[]);
+  if(!fileList.length)return;
+  multiIsReading=true;
   const keepFmt = document.getElementById('multiKeepFmt').checked;
-  let dupCount=0, skipCount=0;
-  for(let i=0;i<files.length;i++){
-    const f=files[i];
-    if(!/\.(xlsx|xls|csv)$/i.test(f.name)){skipCount++; continue;}
-    const relPath = f.webkitRelativePath || f.name;
-    // 同名同大小视为重复文件，防止数据出错
-    if(multiFiles.find(x=>x.name===f.name && x.size===f.size)){dupCount++; continue;}
-    const data=await new Promise((res,rej)=>{
-      const r=new FileReader(); r.onload=e=>{
-        try{
-          const wb=XLSX.read(new Uint8Array(e.target.result),{type:'array',cellDates:keepFmt,cellNF:keepFmt,cellText:!keepFmt});
-          const sheets=wb.SheetNames.map(n=>{ const ws=wb.Sheets[n]; const d=XLSX.utils.sheet_to_json(ws,{header:1,defval:'',raw:keepFmt}); return {name:n,data:d,selected:true}; });
-          res({name:f.name,relPath,size:f.size,sheets});
-        }catch(e2){rej(e2);}
-      }; r.readAsArrayBuffer(f);
-    });
-    multiFiles.push(data);
+  let dupCount=0, skipCount=0, failCount=0, readCount=0;
+  try{
+    for(let i=0;i<fileList.length;i++){
+      const f=fileList[i];
+      multiSetUploadStatus(`正在读取 ${i+1}/${fileList.length}：${f.name}`);
+      await multiYield();
+      if(!/\.(xlsx|xls|csv)$/i.test(f.name)){skipCount++; continue;}
+      // 同名同大小视为重复文件，防止数据出错
+      if(multiFiles.find(x=>x.name===f.name && x.size===f.size)){dupCount++; continue;}
+      try{
+        const data=await multiReadWorkbookFile(f, keepFmt);
+        multiFiles.push(data);
+        readCount++;
+      }catch(e2){
+        console.warn('多文件合并读取失败',f.name,e2);
+        failCount++;
+      }
+      if(readCount&&readCount%5===0)multiRenderFileList();
+    }
+  }finally{
+    multiIsReading=false;
+    multiSetUploadStatus('');
   }
   multiRenderFileList();
-  multiRenderSheetSelector();
-  document.getElementById('multiSheetCard').style.display='';
-  document.getElementById('multiOptionsCard').style.display='';
-  document.getElementById('multiResultCard').style.display='none';
-  // 显示搜索框（有文件时即显示）
   if(multiFiles.length>0){
+    multiRenderSheetSelector();
+    document.getElementById('multiSheetCard').style.display='';
+    document.getElementById('multiOptionsCard').style.display='';
+    document.getElementById('multiResultCard').style.display='none';
     document.getElementById('multiFileSearchWrap').style.display='';
   }
   let msg='已读取 '+multiFiles.length+' 个文件';
   if(dupCount)msg+=', 跳过 '+dupCount+' 个重复文件';
   if(skipCount)msg+=', 忽略 '+skipCount+' 个非Excel文件';
-  showToast(msg,'success');
+  if(failCount)msg+=', '+failCount+' 个文件读取失败';
+  showToast(msg,failCount&&readCount===0?'error':'success');
 }
 
 function multiRenderFileList(){
@@ -3755,7 +3790,7 @@ function pdfSplitSetReceiptName(i, val){
   pdfSplitFinalizeReceiptNames(pdfSplitResults);
 }
 
-async function pdfSplitRenderPages(){
+function pdfSplitRenderPages(){
   const grid=document.getElementById('pdfSplitPageGrid');
   const stats=document.getElementById('pdfSplitStatsBar');
   if(!pdfSplitDoc||!pdfSplitPages.length)return;
@@ -3766,17 +3801,9 @@ async function pdfSplitRenderPages(){
   let html='';
   for(let i=0;i<total;i++){
     const pn=i+1, sel=pdfSplitPages[i].selected;
-    if(!pdfSplitPageBlobs[i]){
-      const subDoc=await PDFLib.PDFDocument.create();
-      const [page]=await subDoc.copyPages(pdfSplitDoc,[i]);
-      subDoc.addPage(page);
-      const bytes=await subDoc.save();
-      pdfSplitPageBlobs[i]=new Blob([bytes],{type:'application/pdf'});
-    }
-    const url=URL.createObjectURL(pdfSplitPageBlobs[i]);
     html+=`<div class="pdf-split-page-card ${sel?'selected':''}" onclick="pdfSplitToggle(${i})" style="width:110px;cursor:pointer;border:2px solid ${sel?'var(--primary)':'var(--gray-200)'};border-radius:8px;overflow:hidden;padding:3px;text-align:center;position:relative;background:var(--card-bg);flex-shrink:0;">
-      <div style="position:relative;overflow:hidden;border-radius:5px;background:var(--gray-100);width:100%;height:140px;line-height:0;">
-        <iframe src="${url}#toolbar=0&navpanes=0" style="position:absolute;top:0;left:0;width:340px;height:490px;border:none;pointer-events:none;transform:scale(0.324);transform-origin:top left;z-index:1;"></iframe>
+      <div style="position:relative;overflow:hidden;border-radius:5px;background:linear-gradient(180deg,var(--gray-50),var(--gray-100));width:100%;height:140px;display:flex;align-items:center;justify-content:center;">
+        <div style="font-size:32px;font-weight:700;color:var(--gray-300);">P${pn}</div>
         <button class="sheet-preview-btn" onclick="event.stopPropagation();pdfSplitPagePreview(${i})" title="悬浮预览" style="position:absolute;top:3px;right:3px;background:rgba(255,255,255,0.96);border:1px solid var(--gray-300);width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-size:14px;z-index:2;padding:0;box-shadow:0 2px 8px rgba(0,0,0,0.15);">👁️</button>
       </div>
       <div style="font-size:11px;font-weight:600;color:var(--gray-700);padding:3px 0 1px;">第 ${pn} 页 ${sel?'✅':''}</div>
