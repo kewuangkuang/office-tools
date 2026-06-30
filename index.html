@@ -1970,6 +1970,8 @@ let headerRows_raw = null; // 2D 多行表头原始数据
 let multiListExpanded = false;
 let multiSearchFilter = '';
 let multiIsReading = false;
+const MULTI_SMALL_FILE_LIMIT = 1024 * 1024; // 1MB 以下并行读，保持小文件速度
+const MULTI_SMALL_FILE_CONCURRENCY = 4;
 
 // Upload
 const multiZone = document.getElementById('multiUploadZone');
@@ -2110,23 +2112,54 @@ async function multiHandleFiles(files, isFolder){
   const keepFmt = document.getElementById('multiKeepFmt').checked;
   let dupCount=0, skipCount=0, failCount=0, readCount=0;
   const failedNames=[];
+  const smallFiles=[];
+  const largeFiles=[];
+  const handleReadFailure=(f,e2)=>{
+    console.warn('多文件合并读取失败',f.name,e2);
+    failCount++;
+    failedNames.push(f.name);
+    showToast('跳过读取失败：'+f.name,'error');
+  };
   try{
     for(let i=0;i<fileList.length;i++){
       const f=fileList[i];
-      multiSetUploadStatus(`正在读取 ${i+1}/${fileList.length}：${f.name}`);
       await multiYield();
       if(!/\.(xlsx|xls|csv)$/i.test(f.name)){skipCount++; continue;}
       // 同名同大小视为重复文件，防止数据出错
       if(multiFiles.find(x=>x.name===f.name && x.size===f.size)){dupCount++; continue;}
+      (f.size<=MULTI_SMALL_FILE_LIMIT?smallFiles:largeFiles).push({file:f,idx:i});
+    }
+
+    for(let start=0;start<smallFiles.length;start+=MULTI_SMALL_FILE_CONCURRENCY){
+      const chunk=smallFiles.slice(start,start+MULTI_SMALL_FILE_CONCURRENCY);
+      const end=Math.min(start+chunk.length,smallFiles.length);
+      multiSetUploadStatus(`正在并行读取小文件 ${start+1}-${end}/${smallFiles.length}`);
+      await multiYield();
+      const results=await Promise.all(chunk.map(async item=>{
+        try{
+          const data=await multiReadWorkbookFile(item.file, keepFmt);
+          return {ok:true,data};
+        }catch(e2){
+          return {ok:false,file:item.file,error:e2};
+        }
+      }));
+      for(const r of results){
+        if(r.ok){ multiFiles.push(r.data); readCount++; }
+        else handleReadFailure(r.file,r.error);
+      }
+      if(readCount&&readCount%5===0)multiRenderFileList();
+    }
+
+    for(let i=0;i<largeFiles.length;i++){
+      const f=largeFiles[i].file;
+      multiSetUploadStatus(`正在读取大文件 ${i+1}/${largeFiles.length}：${f.name}`);
+      await multiYield();
       try{
         const data=await multiReadWorkbookFile(f, keepFmt);
         multiFiles.push(data);
         readCount++;
       }catch(e2){
-        console.warn('多文件合并读取失败',f.name,e2);
-        failCount++;
-        failedNames.push(f.name);
-        showToast('跳过读取失败：'+f.name,'error');
+        handleReadFailure(f,e2);
       }
       if(readCount&&readCount%5===0)multiRenderFileList();
     }
