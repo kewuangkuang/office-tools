@@ -1476,7 +1476,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
           </label>
           <input type="text" id="pdfSplitReceiptNameTemplate" value="{收款人}{金额}" placeholder="如：{收款人}{金额}" style="min-width:220px;padding:5px 8px;border:1px solid var(--gray-300);border-radius:6px;font-size:13px;display:none;">
         </div>
-        <div style="font-size:12px;color:var(--gray-400);margin-top:8px;">💡 默认按“客户回单/电子回单”标题自动判断每页几张，避免把 3 张误当 2 张；本地解析 PDF 和识别回单，不上传财务单据</div>
+        <div style="font-size:12px;color:var(--gray-400);margin-top:8px;">💡 默认按“客户回单/付款回单/付费回单/电子回单”标题自动判断每页几张，避免把 3 张误当 2 张；本地解析 PDF 和识别回单，不上传财务单据</div>
       </div>
       <div class="btn-row" style="margin-top:14px;">
         <button class="btn btn-primary" onclick="pdfSplitExecute()" id="pdfSplitBtn">✂️ 开始拆分</button>
@@ -3504,7 +3504,7 @@ function pdfSplitAllTextItems(textContent, viewport){
   });
   return items;
 }
-// 找出页面上每张回单的"标题行"纵坐标（标题=显示"客户回单"或"网上银行电子回单"的那一行）。
+// 找出页面上每张回单的"标题行"纵坐标（标题=显示"客户回单"、"付款回单"、"付费回单"或"网上银行电子回单"的那一行）。
 // 每张回单都从它自己的标题行开始，按标题切比按页高均分稳——回单在页面上常不是均匀排的。
 // 只认强标题词，避开印章里的"…电子回单专用章"等；相距很近的去重。
 function pdfSplitReceiptTitleRows(pageItems, pageH){
@@ -3524,6 +3524,8 @@ function pdfSplitReceiptTitleRows(pageItems, pageH){
     .map(r=>({y:r.y,top:r.top,bottom:r.bottom,text:r.items.map(it=>it.text).join('').replace(/\s+/g,'')}))
     .filter(r=>{
       if(/客户回单/.test(r.text))return true;
+      if(/付款回单/.test(r.text))return true;
+      if(/付费回单/.test(r.text))return true;
       if(/网上银行电子回单/.test(r.text)&&!/专用章|印章/.test(r.text))return true;
       return false;
     })
@@ -3566,7 +3568,7 @@ function pdfSplitAdaptiveReceiptCrop(pageItems, pageW, pageH, idx, count, dir){
     });
     const titleYs=rowObjs
       .map(r=>({y:r.y,text:r.items.map(it=>it.text).join('').replace(/\s+/g,'')}))
-      .filter(r=>/中国工商银行|网上银行电子回单|客户回单/.test(r.text))
+      .filter(r=>/中国工商银行|网上银行电子回单|客户回单|付款回单|付费回单/.test(r.text))
       .map(r=>r.y)
       .sort((a,b)=>a-b);
     nextTitleY=titleYs.find(y=>y>band.y+band.h*0.35&&y<=band.y+band.h+pageH*0.08);
@@ -3586,7 +3588,11 @@ function pdfSplitAdaptiveReceiptCrop(pageItems, pageW, pageH, idx, count, dir){
   const padBottom=/重要提示|打印日期|验证码|记账日期|备注|附件/.test(text)?pageH*0.075:pageH*0.055;
   const top=Math.max(0,minY-padTop);
   const bottomLimit=nextTitleY!=null?Math.min(pageH,nextTitleY-pageH*0.008):Math.min(pageH,band.y+band.h);
-  const bottom=Math.min(bottomLimit,maxY+padBottom);
+  const textBottom=maxY+padBottom;
+  const bandBottom=Math.min(pageH,band.y+band.h);
+  const bottom=dir==='vertical'
+    ? bottomLimit
+    : Math.min(bandBottom,textBottom);
   // 横向不按文字收紧：二维码、银行行徽等是图片不算文字，按文字范围裁会把它们截掉。
   // 用整条带的宽度（纵向拆分时即整页宽），保证左右两侧（含二维码）完整。
   const left=Math.max(0,band.x);
@@ -3601,10 +3607,11 @@ function pdfSplitAdaptiveReceiptCrop(pageItems, pageW, pageH, idx, count, dir){
   return crop;
 }
 function pdfSplitReceiptCropsForPage(pageItems, pageW, pageH, manualCount, dir){
+  const count=Math.max(1,manualCount||1);
   if(dir==='vertical'){
     const titleRows=pdfSplitReceiptTitleRows(pageItems,pageH);
-    if(titleRows.length){
-      return titleRows.map((row,idx)=>{
+    if(titleRows.length&&(!manualCount||titleRows.length>=manualCount)){
+      const crops=titleRows.map((row,idx)=>{
         const rowH=Math.max(10,row.bottom-row.top);
         const nextRow=titleRows[idx+1];
         const nextRowH=nextRow?Math.max(10,nextRow.bottom-nextRow.top):rowH;
@@ -3614,9 +3621,17 @@ function pdfSplitReceiptCropsForPage(pageItems, pageW, pageH, manualCount, dir){
         const bot=idx<titleRows.length-1?Math.max(top+pageH*0.05,nextRow.top-splitPad):pageH;
         return {x:0,y:top,w:pageW,h:Math.min(pageH,bot)-top, detected:true};
       }).filter(c=>c.h>pageH*0.05);
+      const expectedH=manualCount>1?pageH/manualCount:(crops.length>1?pageH/crops.length:0);
+      if(expectedH){
+        return crops.map((crop,idx)=>{
+          if(crop.h>=expectedH*0.72)return crop;
+          const y=Math.max(0,Math.min(pageH-expectedH,idx*expectedH));
+          return {x:0,y,w:pageW,h:Math.min(pageH-y,expectedH),detected:false,heightFallback:true};
+        });
+      }
+      return crops;
     }
   }
-  const count=Math.max(1,manualCount||1);
   const crops=[];
   for(let n=0;n<count;n++){
     crops.push(pdfSplitAdaptiveReceiptCrop(pageItems,pageW,pageH,n,count,dir));
