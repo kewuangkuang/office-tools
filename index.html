@@ -4038,6 +4038,17 @@ function pdfSplitExtractAmountInfo(compact, lines){
 function pdfSplitExtractAmount(compact, lines){
   return pdfSplitExtractAmountInfo(compact, lines).amount;
 }
+function pdfSplitCleanAmountWarning(amount, warning){
+  const w=String(warning||'').trim();
+  if(!w)return '';
+  if(!String(amount||'').trim())return w;
+  return w
+    .split(/[；;]+/)
+    .map(s=>s.trim())
+    .filter(Boolean)
+    .filter(s=>!/(未识别到金额|未识别到金额数字)/.test(s))
+    .join('；');
+}
 function pdfSplitExtractReceiptFields(lines){
   const joined=pdfSplitNormalizeOcrText(lines.join('\n'));
   const compact=joined.replace(/\s+/g,'');
@@ -4063,7 +4074,7 @@ function pdfSplitExtractReceiptFields(lines){
   const payer=pdfSplitCleanPartyName(payerRaw);
   const payee=pdfSplitCleanPartyName(payeeRaw);
   const core=pdfSplitExtractCoreFields(compact);
-  return {amount:amountInfo.amount,amountWarning:amountInfo.warning,amountSource:amountInfo.source,payer,payee,rawText:joined,...core};
+  return {amount:amountInfo.amount,amountWarning:pdfSplitCleanAmountWarning(amountInfo.amount,amountInfo.warning),amountSource:amountInfo.source,payer,payee,rawText:joined,...core};
 }
 function pdfSplitExtractCoreFields(compact){
   const text=String(compact||'');
@@ -4089,6 +4100,7 @@ async function pdfSplitOcrReceiptCanvas(canvas, fallbackLines, layoutFields){
     accounts: layoutFields?.accounts || guessed.accounts || [],
     rawText: [layoutFields?.rawText, guessed.rawText].filter(Boolean).join('\n')
   };
+  fields.amountWarning=pdfSplitCleanAmountWarning(fields.amount,fields.amountWarning);
   // 农商行客户回单是数字版 PDF，文字直接可取；收款人为空是正常情况，别为此白跑 OCR。
   // 若需要图片识别，只调用访客浏览器本地已加载的 PaddleOCR.js，不向服务器上传 PDF/图片。
   const needsOcr=layoutFields&&layoutFields.crb
@@ -4112,6 +4124,7 @@ async function pdfSplitOcrReceiptCanvas(canvas, fallbackLines, layoutFields){
           accounts: fields.accounts?.length ? fields.accounts : (ocrFields.accounts || []),
           rawText: [fields.rawText, ocrFields.rawText].filter(Boolean).join('\n')
         };
+        fields.amountWarning=pdfSplitCleanAmountWarning(fields.amount,fields.amountWarning);
       }
     }catch(e){ console.warn('PaddleOCR.js 回单识别失败',e); }
   }else if(needsOcr){
@@ -4120,6 +4133,7 @@ async function pdfSplitOcrReceiptCanvas(canvas, fallbackLines, layoutFields){
       showToast('未检测到本地 PaddleOCR.js 资源，已跳过图片 OCR，仅使用 PDF 文字层识别','info');
     }
   }
+  fields.amountWarning=pdfSplitCleanAmountWarning(fields.amount,fields.amountWarning);
   return fields;
 }
 function pdfSplitBuildReceiptBaseName(fields, idx){
