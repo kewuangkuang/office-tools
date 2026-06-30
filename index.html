@@ -2070,11 +2070,27 @@ function multiYield(){
   return new Promise(resolve=>setTimeout(resolve,0));
 }
 
+function multiWithTimeout(promise, ms, message){
+  let timer;
+  const timeout=new Promise((_,reject)=>{
+    timer=setTimeout(()=>reject(new Error(message)),ms);
+  });
+  return Promise.race([promise,timeout]).finally(()=>clearTimeout(timer));
+}
+
 async function multiReadWorkbookFile(f, keepFmt){
   const relPath = f.webkitRelativePath || f.name;
-  const buf=await f.arrayBuffer();
+  const buf=await multiWithTimeout(
+    f.arrayBuffer(),
+    15000,
+    '文件读取超时。请确认文件已下载到本机，并关闭 Excel 后重试。'
+  );
   await multiYield();
-  const wb=XLSX.read(new Uint8Array(buf),{type:'array',cellDates:keepFmt,cellNF:keepFmt,cellText:!keepFmt});
+  const wb=await multiWithTimeout(
+    Promise.resolve().then(()=>XLSX.read(new Uint8Array(buf),{type:'array',cellDates:keepFmt,cellNF:keepFmt,cellText:!keepFmt})),
+    15000,
+    '文件解析超时，可能文件结构异常或被占用。'
+  );
   const sheets=wb.SheetNames.map(n=>{
     const ws=wb.Sheets[n];
     const d=XLSX.utils.sheet_to_json(ws,{header:1,defval:'',raw:keepFmt});
@@ -2093,6 +2109,7 @@ async function multiHandleFiles(files, isFolder){
   multiIsReading=true;
   const keepFmt = document.getElementById('multiKeepFmt').checked;
   let dupCount=0, skipCount=0, failCount=0, readCount=0;
+  const failedNames=[];
   try{
     for(let i=0;i<fileList.length;i++){
       const f=fileList[i];
@@ -2108,6 +2125,8 @@ async function multiHandleFiles(files, isFolder){
       }catch(e2){
         console.warn('多文件合并读取失败',f.name,e2);
         failCount++;
+        failedNames.push(f.name);
+        showToast('跳过读取失败：'+f.name,'error');
       }
       if(readCount&&readCount%5===0)multiRenderFileList();
     }
@@ -2128,6 +2147,9 @@ async function multiHandleFiles(files, isFolder){
   if(skipCount)msg+=', 忽略 '+skipCount+' 个非Excel文件';
   if(failCount)msg+=', '+failCount+' 个文件读取失败';
   showToast(msg,failCount&&readCount===0?'error':'success');
+  if(failedNames.length){
+    console.warn('以下文件读取失败：',failedNames);
+  }
 }
 
 function multiRenderFileList(){
