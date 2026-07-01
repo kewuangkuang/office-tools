@@ -1482,9 +1482,9 @@ https://github.com/nodeca/pako/blob/main/LICENSE
               <option value="custom">自定义</option>
             </select>
           </label>
-          <input type="text" id="pdfSplitReceiptNameTemplate" value="{收款人}{金额}" placeholder="如：{收款人}{金额}" style="min-width:220px;padding:5px 8px;border:1px solid var(--gray-300);border-radius:6px;font-size:13px;display:none;">
+          <input type="text" id="pdfSplitReceiptNameTemplate" value="{收款人}{金额}" placeholder="如：{收款人}{日期}" title="支持：{收款人}、{付款人}、{金额}、{日期}、{流水号}、{序号}" style="min-width:220px;padding:5px 8px;border:1px solid var(--gray-300);border-radius:6px;font-size:13px;display:none;">
         </div>
-        <div style="font-size:12px;color:var(--gray-400);margin-top:8px;">💡 默认按“客户回单/付款回单/付费回单/电子回单”标题自动判断每页几张，避免把 3 张误当 2 张；本地解析 PDF 和识别回单，不上传财务单据</div>
+        <div style="font-size:12px;color:var(--gray-400);margin-top:8px;">💡 默认按“客户回单/付款回单/付费回单/电子回单”标题自动判断每页几张；自定义命名支持 {收款人}/{付款人}/{金额}/{日期}/{流水号}/{序号}；本地解析 PDF 和识别回单，不上传财务单据</div>
       </div>
       <div class="btn-row" style="margin-top:14px;">
         <button class="btn btn-primary" onclick="pdfSplitExecute()" id="pdfSplitBtn">✂️ 开始拆分</button>
@@ -4183,7 +4183,13 @@ function pdfSplitBuildReceiptBaseName(fields, idx){
   else if(mode==='payer') base=fields.payer;
   else if(mode==='payee') base=fields.payee;
   else if(mode==='payee_amount') base=(fields.payee||'')+(fields.amount||'');
-  else base=tpl.replace(/\{金额\}/g,fields.amount||'').replace(/\{付款人\}/g,fields.payer||'').replace(/\{收款人\}/g,fields.payee||'').replace(/\{序号\}/g,String(idx+1));
+  else base=tpl
+    .replace(/\{金额\}/g,fields.amount||'')
+    .replace(/\{付款人\}/g,fields.payer||'')
+    .replace(/\{收款人\}/g,fields.payee||'')
+    .replace(/\{日期\}/g,fields.date||'')
+    .replace(/\{流水号\}/g,fields.serial||'')
+    .replace(/\{序号\}/g,String(idx+1));
   return pdfSplitSafeFileName(base||('回单'+(idx+1)));
 }
 function pdfSplitFinalizeReceiptNames(results){
