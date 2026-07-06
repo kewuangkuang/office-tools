@@ -1162,14 +1162,6 @@ https://github.com/nodeca/pako/blob/main/LICENSE
             <div class="toggle-text">按列名对齐合并<small>开启：同名列放在一起；关闭：按原来的列位置直接拼</small></div>
             <label class="toggle"><input type="checkbox" id="multiAlignByName" checked><span class="slider"></span></label>
           </div>
-          <div class="toggle-row">
-            <div class="toggle-text">列名识别行<small>取并集时按第几行标题判断同一列</small></div>
-            <div style="display:flex;align-items:center;gap:8px;">
-              <input type="number" id="multiHeaderKeyRow" value="1" min="1" max="20" style="width:72px;padding:8px 12px;border:1px solid var(--gray-300);border-radius:8px;font-size:14px;color:var(--gray-700);outline:none;">
-              <span style="font-size:13px;color:var(--gray-500);">行</span>
-            </div>
-          </div>
-          <div class="option-help">例如前 2 行都是标题，但第 1 行是合并单元格汇总名称、第 2 行才是明细列名：标题行填 2，列名识别行填 2。</div>
           <div class="option-help">开启后：各文件列顺序不一样也能按表头名字对齐，并保留所有出现过的列。关闭后：按第1列、第2列的位置合并，适合所有表结构完全一样的情况。</div>
           <div class="toggle-row">
             <div class="toggle-text">是否删除重复行</div>
@@ -1482,9 +1474,9 @@ https://github.com/nodeca/pako/blob/main/LICENSE
               <option value="custom">自定义</option>
             </select>
           </label>
-          <input type="text" id="pdfSplitReceiptNameTemplate" value="{收款人}{金额}" placeholder="如：{收款人}{日期}" title="支持：{收款人}、{付款人}、{金额}、{日期}、{流水号}、{序号}" style="min-width:220px;padding:5px 8px;border:1px solid var(--gray-300);border-radius:6px;font-size:13px;display:none;">
+          <input type="text" id="pdfSplitReceiptNameTemplate" value="{收款人}{金额}" placeholder="如：{收款人}{金额}" style="min-width:220px;padding:5px 8px;border:1px solid var(--gray-300);border-radius:6px;font-size:13px;display:none;">
         </div>
-        <div style="font-size:12px;color:var(--gray-400);margin-top:8px;">💡 默认按“客户回单/付款回单/付费回单/电子回单”标题自动判断每页几张；自定义命名支持 {收款人}/{付款人}/{金额}/{日期}/{流水号}/{序号}；本地解析 PDF 和识别回单，不上传财务单据</div>
+        <div style="font-size:12px;color:var(--gray-400);margin-top:8px;">💡 默认按“客户回单/付款回单/付费回单/电子回单”标题自动判断每页几张，避免把 3 张误当 2 张；本地解析 PDF 和识别回单，不上传财务单据</div>
       </div>
       <div class="btn-row" style="margin-top:14px;">
         <button class="btn btn-primary" onclick="pdfSplitExecute()" id="pdfSplitBtn">✂️ 开始拆分</button>
@@ -2485,14 +2477,7 @@ function multiHeaderChange(){ const v=parseInt(document.getElementById('multiHea
 function multiToggleNoHeader(){
   const nh=document.getElementById('multiNoHeader').checked;
   const inp=document.getElementById('multiHeaderRows');
-  const keyInp=document.getElementById('multiHeaderKeyRow');
-  if(nh){
-    inp.value=0; inp.disabled=true; inp.style.opacity='0.5';
-    if(keyInp){ keyInp.disabled=true; keyInp.style.opacity='0.5'; }
-  } else {
-    inp.value=1; inp.disabled=false; inp.style.opacity='1';
-    if(keyInp){ keyInp.disabled=false; keyInp.style.opacity='1'; }
-  }
+  if(nh){ inp.value=0; inp.disabled=true; inp.style.opacity='0.5'; } else { inp.value=1; inp.disabled=false; inp.style.opacity='1'; }
 }
 function multiToggleMergeHdr(){
   const on=document.getElementById('multiMergeHdr').checked;
@@ -2514,10 +2499,6 @@ function multiMerge(){
   if(!allSheets.length){ showToast('请选择工作表','error'); return; }
   const nh=document.getElementById('multiNoHeader').checked;
   const headerRows=nh?0:Math.max(0,parseInt(document.getElementById('multiHeaderRows').value)||1);
-  const headerKeyRowInput=document.getElementById('multiHeaderKeyRow');
-  const headerKeyRow=headerRows>0?Math.min(headerRows,Math.max(1,parseInt(headerKeyRowInput?.value)||1)):0;
-  if(headerKeyRowInput && headerRows>0)headerKeyRowInput.value=headerKeyRow;
-  const headerKeyIdx=headerKeyRow>0?headerKeyRow-1:0;
   const addSrc=document.getElementById('multiAddSource').checked;
   const srcMode=document.querySelector('input[name="multiSourceMode"]:checked')?.value||'auto';
   const srcTxt=document.getElementById('multiSourceText').value.trim();
@@ -2534,27 +2515,20 @@ function multiMerge(){
     const headerSeen=new Set();
     const hdrOrder=[];
     const sheetColMaps={};
-    const headerSamples={};
 
     allSheets.forEach((sh,shIdx)=>{
       const data=sh.data; if(data.length<=headerRows)return;
       const maxCol=Math.max(...data.slice(0,headerRows).map(r=>(r||[]).length),0);
       const colMap=[];
       for(let ci=0;ci<maxCol;ci++){
-        const keyRow=data[headerKeyIdx]||[];
-        const keyVal=keyRow[ci]!=null?String(keyRow[ci]).trim():'';
-        const hk=keyVal||'列'+(ci+1);
-        const rawHeaders=[];
+        let hk='';
         for(let ri=0;ri<headerRows;ri++){
           const row=data[ri]||[];
-          rawHeaders.push(row[ci]!=null?String(row[ci]):'');
+          const val=row[ci]!=null?String(row[ci]):'';
+          hk+=(ri?' / ':'')+val;
         }
         colMap.push({ci, hk});
-        if(!headerSeen.has(hk)){
-          headerSeen.add(hk);
-          hdrOrder.push(hk);
-          headerSamples[hk]=rawHeaders;
-        }
+        if(!headerSeen.has(hk)){ headerSeen.add(hk); hdrOrder.push(hk); }
       }
       sheetColMaps[shIdx]=colMap;
     });
@@ -2566,8 +2540,10 @@ function multiMerge(){
     for(let ri=0;ri<headerRows;ri++){
       const hr=[];
       for(const hk of hdrOrder){
-        const sample=headerSamples[hk]||[];
-        hr.push(sample[ri]!=null?String(sample[ri]):'');
+        // 找到第一个文件同列的原始值
+        const ci=hdrOrder.indexOf(hk);
+        const firstRow=(allSheets[0].data[ri]||[]);
+        hr.push(firstRow[ci]!=null?String(firstRow[ci]):'');
       }
       if(addSrc)hr.unshift(ri===0?'来源':'');
       headerRows_raw.push(hr);
@@ -4184,13 +4160,7 @@ function pdfSplitBuildReceiptBaseName(fields, idx){
   else if(mode==='payer') base=fields.payer;
   else if(mode==='payee') base=fields.payee;
   else if(mode==='payee_amount') base=(fields.payee||'')+(fields.amount||'');
-  else base=tpl
-    .replace(/\{金额\}/g,fields.amount||'')
-    .replace(/\{付款人\}/g,fields.payer||'')
-    .replace(/\{收款人\}/g,fields.payee||'')
-    .replace(/\{日期\}/g,fields.date||'')
-    .replace(/\{流水号\}/g,fields.serial||'')
-    .replace(/\{序号\}/g,String(idx+1));
+  else base=tpl.replace(/\{金额\}/g,fields.amount||'').replace(/\{付款人\}/g,fields.payer||'').replace(/\{收款人\}/g,fields.payee||'').replace(/\{序号\}/g,String(idx+1));
   return pdfSplitSafeFileName(base||('回单'+(idx+1)));
 }
 function pdfSplitFinalizeReceiptNames(results){
