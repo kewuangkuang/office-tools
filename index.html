@@ -2051,32 +2051,28 @@ function pdfSplitNormalizePaddleResult(raw){
   walk(raw);
   return {lines:[...new Set(lines.filter(Boolean))],blocks,raw};
 }
-let pdfSplitPaddleJsPromise=null;
-let pdfSplitPaddleJsEngine=null;
-async function pdfSplitEnsurePaddleJsOcr(){
-  if(pdfSplitPaddleJsEngine)return true;
-  if(pdfSplitPaddleJsPromise)return pdfSplitPaddleJsPromise;
-  pdfSplitPaddleJsPromise=(async()=>{
-    if(window.paddlejs&&window.paddlejs.ocr){ try{ await window.paddlejs.ocr.init(); pdfSplitPaddleJsEngine=window.paddlejs.ocr; return true; }catch(e){} }
-    try{
-      await pdfSplitLoadScript('https://cdn.jsdelivr.net/npm/@paddlejs-models/ocr@1.2.4/lib/index.js');
-      if(window.paddlejs&&window.paddlejs.ocr){ await window.paddlejs.ocr.init(); pdfSplitPaddleJsEngine=window.paddlejs.ocr; return true; }
-    }catch(e){ console.warn('Paddle.js OCR 加载失败', e); }
-    return false;
-  })();
-  return pdfSplitPaddleJsPromise;
-}
-async function pdfSplitRunPaddleJsOcr(canvas){
-  if(!await pdfSplitEnsurePaddleJsOcr())return {lines:[],blocks:[],raw:null};
-  try{
-    const result=await pdfSplitPaddleJsEngine.recognize(canvas);
-    const text=result&&result.text?String(result.text):'';
-    const lines=text.split('\n').map(l=>l.trim()).filter(Boolean);
-    return {lines, blocks:[], raw:result};
-  }catch(e){
-    console.warn('Paddle.js OCR 识别失败', e);
-    return {lines:[],blocks:[],raw:null};
-  }
+// OCR 资源检测提示（在线版使用）
+const PDFSPLIT_LOCAL_ZIP_URL='https://github.com/kewuangkuang/office-tools/releases/latest/download/office-tools-local.zip';
+let pdfSplitOcrBannerDismissed=false;
+function pdfSplitShowOcrBanner(){
+  if(pdfSplitOcrBannerDismissed)return;
+  let banner=document.getElementById('pdfSplitOcrBanner');
+  if(banner)banner.remove();
+  banner=document.createElement('div');
+  banner.id='pdfSplitOcrBanner';
+  banner.style.cssText='margin-top:12px;padding:14px 16px;background:#fffbeb;border:1px solid #f59e0b;border-radius:10px;font-size:13px;color:#92400e;line-height:1.7;';
+  banner.innerHTML='<div style="display:flex;align-items:flex-start;gap:10px;">'
+    +'<span style="font-size:20px;flex-shrink:0;margin-top:1px;">⚠️</span>'
+    +'<div style="flex:1;">'
+    +'<div style="font-weight:600;margin-bottom:4px;">回单 OCR 资源未就绪</div>'
+    +'<div>当前为在线版，未加载本地 PaddleOCR.js，<b>扫描件/图片型 PDF 的金额、付款人等字段将无法自动识别</b>。请下载本地完整包使用：</div>'
+    +'<a href="'+PDFSPLIT_LOCAL_ZIP_URL+'" target="_blank" rel="noopener" style="display:inline-block;margin-top:8px;padding:6px 16px;background:#f59e0b;color:#fff;border-radius:6px;text-decoration:none;font-weight:500;">📥 下载本地完整包</a>'
+    +'<span style="margin-left:8px;color:#b45309;font-size:12px;">下载后解压，双击 index.html 即可使用</span>'
+    +'</div>'
+    +'<button onclick="document.getElementById(\'pdfSplitOcrBanner\')?.remove();pdfSplitOcrBannerDismissed=true;" style="background:none;border:none;cursor:pointer;font-size:16px;color:#b45309;padding:2px 4px;flex-shrink:0;" title="关闭">✕</button>'
+    +'</div>';
+  const opts=document.getElementById('pdfSplitReceiptOptions');
+  if(opts) opts.parentNode.insertBefore(banner, opts.nextSibling);
 }
 
 // ==========================================
@@ -3430,6 +3426,17 @@ let pdfSplitFile = null, pdfSplitDoc = null, pdfSplitJsDoc = null, pdfSplitPages
 function pdfSplitUpdateMode(){
   const mode=document.querySelector('input[name="pdfSplitMode"]:checked')?.value;
   document.getElementById('pdfSplitReceiptOptions').style.display=mode==='receipt'?'':'none';
+  // 切到回单模式时检测本地 OCR 资源
+  if(mode==='receipt'){
+    const g=pdfSplitGetPaddleGlobal();
+    if(!g){
+      setTimeout(()=>{ pdfSplitShowOcrBanner(); },100);
+    }else{
+      const b=document.getElementById('pdfSplitOcrBanner'); if(b)b.remove();
+    }
+  }else{
+    const b=document.getElementById('pdfSplitOcrBanner'); if(b)b.remove();
+  }
 }
 function pdfSplitUpdateReceiptUI(){
   const sel=document.getElementById('pdfSplitReceiptCount');
@@ -4198,12 +4205,8 @@ async function pdfSplitOcrReceiptCanvas(canvas, fallbackLines, layoutFields){
         ocrLines=result.lines||[];
       }catch(e){ console.warn('PaddleOCR.js 回单识别失败',e); }
     }
-    if(!ocrLines.length){
-      try{
-        const result=await pdfSplitRunPaddleJsOcr(canvas);
-        ocrLines=result.lines||[];
-      }catch(e){ console.warn('Paddle.js OCR 回单识别失败',e); }
-    }
+    // 无本地 OCR 且 fallback 已移除，提示用户下载本地包
+    if(!ocrLines.length){ pdfSplitShowOcrBanner(); }
   }
   if(ocrLines.length){
     lines=lines.concat(ocrLines);
@@ -4223,7 +4226,7 @@ async function pdfSplitOcrReceiptCanvas(canvas, fallbackLines, layoutFields){
   }else if(needsOcr){
     if(!paddleOcrMissingWarned){
       paddleOcrMissingWarned=true;
-      showToast('未检测到本地 PaddleOCR.js 资源，已使用在线备用 OCR 或仅使用 PDF 文字层识别','info');
+      showToast('未检测到本地 PaddleOCR.js，扫描件金额等字段无法自动识别，请下载本地完整包','info');
     }
     // 扫描件/图片型PDF文字层为空，无OCR时金额等字段识别不出来，补充提示
     if(!fields.amount && lines.join('').length<12){
