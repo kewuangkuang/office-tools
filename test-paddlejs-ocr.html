@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>Paddle.js OCR 测试</title>
+<style>
+body{font-family:system-ui,sans-serif;max-width:700px;margin:40px auto;padding:0 20px;}
+h1{font-size:20px;}
+#status{margin:16px 0;padding:12px;border-radius:8px;background:#f0f0f0;font-size:14px;white-space:pre-wrap;}
+#status.ok{background:#dcfce7;color:#166534;}
+#status.err{background:#fef2f2;color:#991b1b;}
+#status.loading{background:#fffbeb;color:#92400e;}
+img{max-width:100%;border:1px solid #ddd;border-radius:6px;margin:12px 0;}
+canvas{display:none;}
+</style>
+</head>
+<body>
+<h1>Paddle.js OCR 测试页</h1>
+<p>测试 <code>@paddlejs-models/ocr@1.2.4</code> 能否通过 esm.sh CDN 在浏览器中运行中文 OCR。</p>
+<div id="status" class="loading">正在加载 OCR 模型（首次约 10-30 秒，需从百度 CDN 下载模型）...</div>
+<div>
+  <label>或上传自己的图片测试：</label><br>
+  <input type="file" id="fileInput" accept="image/*" style="margin-top:8px;">
+</div>
+<img id="testImg" crossorigin="anonymous" src="">
+<canvas id="canvas"></canvas>
+<h2>识别结果</h2>
+<pre id="result" style="background:#f8f8f8;padding:12px;border-radius:8px;min-height:60px;font-size:14px;">等待识别...</pre>
+
+<script type="module">
+const statusEl = document.getElementById('status');
+const resultEl = document.getElementById('result');
+const imgEl = document.getElementById('testImg');
+const canvas = document.getElementById('canvas');
+const fileInput = document.getElementById('fileInput');
+
+function setStatus(msg, type) {
+  statusEl.textContent = msg;
+  statusEl.className = type;
+}
+
+try {
+  setStatus('正在从 esm.sh 加载 @paddlejs-models/ocr ...', 'loading');
+
+  const ocr = await import('https://esm.sh/@paddlejs-models/ocr@1.2.4');
+
+  setStatus('正在初始化 OCR 模型（下载模型中，请稍候）...', 'loading');
+  await ocr.init();
+
+  setStatus('OCR 模型加载成功！正在生成测试图片...', 'ok');
+
+  // 生成一张含中文文字的 canvas 图片
+  const c = document.createElement('canvas');
+  c.width = 400; c.height = 120;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(0, 0, 400, 120);
+  ctx.fillStyle = '#000';
+  ctx.font = '24px sans-serif';
+  ctx.fillText('付款人：张三  金额：12,345.67元', 20, 40);
+  ctx.fillText('收款人：李四  日期：2026-07-09', 20, 80);
+
+  const dataUrl = c.toDataURL('image/png');
+  imgEl.src = dataUrl;
+
+  // 等图片加载完
+  await new Promise(r => { imgEl.onload = r; });
+
+  setStatus('正在识别...', 'loading');
+  const t0 = performance.now();
+  const res = await ocr.recognize(imgEl);
+  const dt = ((performance.now() - t0) / 1000).toFixed(2);
+
+  const text = Array.isArray(res.text) ? res.text.join('\n') : String(res.text || '');
+  resultEl.textContent = `识别耗时：${dt}s\n识别结果：\n${text}`;
+  setStatus(`OCR 识别完成！耗时 ${dt}s` + (text.includes('张三') || text.includes('金额') ? ' — 中文识别正常' : ' — 请检查结果'), text.includes('张三') || text.includes('金额') ? 'ok' : 'err');
+
+  // 支持用户上传自己的图片
+  fileInput.onchange = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async (ev) => {
+      imgEl.src = ev.target.result;
+      await new Promise(r => { imgEl.onload = r; });
+      setStatus('正在识别上传图片...', 'loading');
+      const t1 = performance.now();
+      const res2 = await ocr.recognize(imgEl);
+      const dt2 = ((performance.now() - t1) / 1000).toFixed(2);
+      const text2 = Array.isArray(res2.text) ? res2.text.join('\n') : String(res2.text || '');
+      resultEl.textContent = `识别耗时：${dt2}s\n识别结果：\n${text2}`;
+      setStatus(`识别完成！耗时 ${dt2}s`, 'ok');
+    };
+    reader.readAsDataURL(file);
+  };
+
+} catch (e) {
+  setStatus('加载失败：' + e.message, 'err');
+  resultEl.textContent = '错误详情：\n' + e.stack;
+}
+</script>
+</body>
+</html>
