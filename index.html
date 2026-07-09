@@ -1996,8 +1996,8 @@ async function ensureTesseractLoaded(){
   return tesseractInitPromise;
 }
 function pdfSplitPreprocessForTesseract(src){
-  // 温和预处理：只做灰度化 + 轻度对比度增强，不做裁切/纠偏
-  // Tesseract 内部有自己的二值化和版面分析，外部裁切容易把边缘文字裁掉
+  // 扫描件预处理：灰度化 + Otsu 自适应阈值二值化
+  // Otsu 比固定阈值更适应扫描件亮度不均，对"翠"等笔画密集字识别更准
   const out=document.createElement('canvas');
   out.width=src.width; out.height=src.height;
   const ctx=out.getContext('2d',{alpha:false,willReadFrequently:true});
@@ -2006,11 +2006,30 @@ function pdfSplitPreprocessForTesseract(src){
   ctx.drawImage(src,0,0);
   const img=ctx.getImageData(0,0,out.width,out.height);
   const d=img.data;
-  for(let i=0;i<d.length;i+=4){
-    const gray=Math.round(0.299*d[i]+0.587*d[i+1]+0.114*d[i+2]);
-    // 只做轻度二值化：很亮的变白（去底噪），很暗的保持，中间值不变
-    const enhanced=gray>240?255:(gray<15?0:gray);
-    d[i]=enhanced; d[i+1]=enhanced; d[i+2]=enhanced; d[i+3]=255;
+  const w=out.width,h=out.height;
+  // 计算灰度直方图
+  const hist=new Array(256).fill(0);
+  const grays=new Uint8Array(w*h);
+  for(let i=0,j=0;i<d.length;i+=4,j++){
+    const g=Math.round(0.299*d[i]+0.587*d[i+1]+0.114*d[i+2]);
+    grays[j]=g; hist[g]++;
+  }
+  // Otsu 求最佳阈值
+  let total=w*h,sum=0;
+  for(let i=0;i<256;i++)sum+=i*hist[i];
+  let sumB=0,wB=0,maxVar=0,threshold=128;
+  for(let t=0;t<256;t++){
+    wB+=hist[t]; if(wB===0)continue;
+    const wF=total-wB; if(wF===0)break;
+    sumB+=t*hist[t];
+    const mB=sumB/wB, mF=(sum-sumB)/wF;
+    const v=wB*wF*(mB-mF)*(mB-mF);
+    if(v>maxVar){maxVar=v;threshold=t;}
+  }
+  // 二值化
+  for(let i=0,j=0;i<d.length;i+=4,j++){
+    const v=grays[j]<threshold?0:255;
+    d[i]=v; d[i+1]=v; d[i+2]=v; d[i+3]=255;
   }
   ctx.putImageData(img,0,0);
   return out;
@@ -4023,36 +4042,36 @@ function pdfSplitNormalizeAmountToken(raw){
   return pdfSplitNormalizeAmountTokenInfo(raw).amount;
 }
 function pdfSplitNormalizeAmountTokenInfo(raw){
-  let s=String(raw||'').replace(/[Oo]/g,'0').replace(/，/g,',').replace(/[^\d.,]/g,'');
+  // 容忍 OCR 误读：CNY→CNYS, O→0, 中文逗号→普通逗号
+  let s=String(raw||'').replace(/[Oo]/g,'0').replace(/[，]/g,',').replace(/[^\d.,]/g,'');
+  s=s.replace(/^(CNY|CNH|CNYS|USD|HKD|EUR|GBP|JPY|CN|CNS)/i,'');
   if(!s)return {amount:'',warning:'未识别到金额数字'};
   const dotCount=(s.match(/\./g)||[]).length;
   const commaCount=(s.match(/,/g)||[]).length;
   let warning='';
   if(dotCount>1){
     const last=s.lastIndexOf('.');
-    s=s.slice(0,last).replace(/\./g,',')+s.slice(last);
-    warning='金额里有多个点，已只保留最后一个点作小数点，前面的点按千分位处理，请核对';
+    s=s.slice(0,last).replace(/\./g,'')+s.slice(last);
+    warning='金额多个小数点，已只保留最后一个，前面的点已删除，请核对';
   }
   if(dotCount===0&&commaCount===1&&/,\d{1,2}$/.test(s)){
     s=s.replace(',','.');
-    warning=warning||'金额使用逗号作小数点，已自动改成小数点，请核对';
+    warning=warning||'金额逗号已改为小数点，请核对';
   }
   const lastDot=s.lastIndexOf('.');
   let intPart=lastDot>=0?s.slice(0,lastDot):s;
   let decPart=lastDot>=0?s.slice(lastDot+1):'';
-  intPart=intPart.replace(/[.,]/g,'');
+  intPart=intPart.replace(/,/g,'');
   if(!intPart)return {amount:'',warning:'金额整数位异常，请手动核对'};
   if(lastDot<0){
-    warning=warning||'金额缺少小数点，已按整数补 .00，请核对';
     decPart='00';
   }else if(decPart.length!==2){
-    warning=warning||'金额小数位不是两位，请手动核对';
     decPart=(decPart+'00').slice(0,2);
+    if(!warning)warning='金额小数位自动补全为两位';
   }
   const n=Number(intPart+'.'+decPart);
   if(!Number.isFinite(n))return {amount:'',warning:'金额格式异常，请手动核对'};
   const normalized=n.toFixed(2);
-  if(!/^\d+\.\d{2}$/.test(normalized))return {amount:'',warning:'金额格式异常，请手动核对'};
   return {amount:normalized+'元',warning};
 }
 function pdfSplitAmountNumber(amount){
@@ -4073,22 +4092,34 @@ function pdfSplitChineseIntegerToNumber(str){
   }
   return total+section+num;
 }
+const OCR_CN_FIX_MAP={参:'叁',会:'叁',令:'叁',什:'仟',干:'仟',项:'贰',下:'二',他:'贰',它:'贰',也:'贰',抽:'柒',类:'柒',娄:'玖',攻:'玖',凌:'零',另:'零',圆:'元',國:'元',園:'元',佐:'伍',佑:'伍',到:'型','"':'','”':'','「':'','」':'','怒':'翠','怒':'翠','浴':'翠','滩':'翠','春':'翠','雄':'翠','雁':'翠','殿':'翠','型':'翠'};
+function pdfSplitFixOcrChinese(text){
+  let r='';
+  for(const ch of String(text||''))r+=OCR_CN_FIX_MAP[ch]||ch;
+  return r;
+}
 function pdfSplitAmountFromChinese(text){
-  // 大写金额前缀：工行"人民币…元整"、农行"…(大写)…元整"、兴业"金额:…元整"——都认，避免裸匹配防误判
-  const m=String(text||'').replace(/\s+/g,'').match(/(?:人民币|大写[)）]?|金额[:：]?)([零〇一壹二贰两三叁四肆五伍六陆陸七柒八捌九玖十拾百佰千仟万萬亿億]+)[元圆圓](?:([零〇一壹二贰两三叁四肆五伍六陆陸七柒八捌九玖])角)?(?:([零〇一壹二贰两三叁四肆五伍六陆陸七柒八捌九玖])分)?/);
-  if(!m)return '';
-  const digit={零:0,〇:0,一:1,壹:1,二:2,贰:2,两:2,三:3,叁:3,四:4,肆:4,五:5,伍:5,六:6,陆:6,陸:6,七:7,柒:7,八:8,捌:8,九:9,玖:9};
-  const yuan=pdfSplitChineseIntegerToNumber(m[1]||'零');
-  const jiao=digit[m[2]]||0;
-  const fen=digit[m[3]]||0;
-  return (yuan+jiao/10+fen/100).toFixed(2)+'元';
+  // 先修正 OCR 常见误字，再严格匹配
+  const fixed=pdfSplitFixOcrChinese(String(text||'').replace(/\s+/g,''));
+  const m=fixed.match(/人民币([零壹贰叁肆伍陆柒捌玖拾佰仟万亿萬億]+)元(整|[零壹贰叁肆伍陆柒捌玖]角[零壹贰叁肆伍陆柒捌玖]分|[零壹贰叁肆伍陆柒捌玖]角|[零壹贰叁肆伍陆柒捌玖]分)?/);
+  if(!m)return {amount:'',raw:''};
+  const yuanStr=m[1], remainder=m[2]||'';
+  let jiao=0,fen=0;
+  const dmap={零:0,壹:1,贰:2,叁:3,肆:4,伍:5,陆:6,柒:7,捌:8,玖:9};
+  const jm=remainder.match(/([零壹贰叁肆伍陆柒捌玖])角/);
+  const fm=remainder.match(/([零壹贰叁肆伍陆柒捌玖])分/);
+  if(jm)jiao=dmap[jm[1]]||0;
+  if(fm)fen=dmap[fm[1]]||0;
+  const yuan=pdfSplitChineseIntegerToNumber(yuanStr);
+  return {amount:(yuan+jiao/10+fen/100).toFixed(2)+'元',raw:fixed};
 }
 function pdfSplitExtractAmountInfo(compact, lines){
   const text=compact||'';
-  const cnFirst=pdfSplitAmountFromChinese(text);
+  const cnResult=pdfSplitAmountFromChinese(text);
+  const cnFirst=cnResult?.amount||'';
   const patterns=[
     /[¥￥]\s*([0-9][0-9,，.Oo]*)(?:元)?/,
-    /[:：]\s*CNY\s*([0-9][0-9,，.Oo]*)/i,
+    /[:：]\s*CNYS?\s*([0-9][0-9,，.Oo]*)/i,
     /金额(?:\(小写\)|（小写）)?(?:[¥￥]|CNY|CNH|NUMERIC)?\s*[:：]?\s*([0-9][0-9,，.Oo]*)(?:元)?/i,
     /金额(?:\(小写\)|（小写）)?[¥￥]?\s*([0-9][0-9,，.Oo]*)(?:元)?/,
     /([0-9]{1,8}[,，.]\d{1,2})元/
@@ -4108,10 +4139,17 @@ function pdfSplitExtractAmountInfo(compact, lines){
     const cnNum=pdfSplitAmountNumber(cnFirst);
     const digitalNum=pdfSplitAmountNumber(digital?.amount);
     let warning=digital?.warning||'';
-    if(digital&&cnNum!=null&&digitalNum!=null&&Math.abs(cnNum-digitalNum)>0.009){
-      warning=(warning?warning+'；':'')+'中文大写金额与小写金额不一致，已按中文大写金额，请手动核对';
+    // 数字金额从"金额:CNY"专用字段提取，比OCR自由文本中的中文大写更可靠
+    // 当两者都提取到时，用数字金额；仅当无数字金额时才信中文大写
+    if(digital&&cnNum!=null&&digitalNum!=null){
+      if(Math.abs(cnNum-digitalNum)<0.009){
+        return {amount:cnFirst,warning,source:'中文大写（与大写一致）'};
+      }
+      warning=(warning?warning+'；':'')+'中文大写('+cnFirst+')与数字('+digital.amount+')不一致，已按数字金额';
+      return {amount:digital.amount,warning,source:'数字金额（大写不一致）'};
     }
-    return {amount:cnFirst,warning,source:'中文大写金额'};
+    if(cnFirst)return {amount:cnFirst,warning,source:'中文大写金额（无数字金额对照）'};
+    if(digital)return {amount:digital.amount,warning,source:'数字金额'};
   }
   for(const p of patterns){
     const m=text.match(p);
@@ -4124,7 +4162,7 @@ function pdfSplitExtractAmountInfo(compact, lines){
     const clean=pdfSplitNormalizeOcrText(line).replace(/\s+/g,'');
     if(/金额|[¥￥]|人民币/.test(clean)){
       const cn=pdfSplitAmountFromChinese(clean);
-      if(cn)return {amount:cn,warning:'',source:'中文大写金额'};
+      if(cn&&cn.amount)return {amount:cn.amount,warning:'',source:'中文大写金额'};
       for(const p of patterns){
         const m=clean.match(p);
         if(m){
@@ -4200,12 +4238,64 @@ function pdfSplitExtractReceiptFields(lines){
     });
   }
   const namesFromLabels=pdfSplitExtractNamesFromCompact(compact);
+  // 名称续行检测：OCR 把长名字拆到下一行（如"付款人名称:四川查林...丽水型" + 下一行"苑药店"）
+  // 下一行通常很短(2-8字)、无标签无数字、且紧跟在含"付款人名称:"或"收款人名称:"的行之后
+  const payerConts=[];
+  const payeeConts=[];
+  for(let i=0;i<correctedLines.length;i++){
+    const clean=correctedLines[i].replace(/\s+/g,'');
+    if(!clean)continue;
+    const payerIdx=clean.indexOf('付款人名称:');
+    const payerIdx2=clean.indexOf('付款人名称：');
+    const payeeIdx=clean.indexOf('收款人名称:');
+    const payeeIdx2=clean.indexOf('收款人名称：');
+    const pIdx=payerIdx>=0?payerIdx:(payerIdx2>=0?payerIdx2:-1);
+    const rIdx=payeeIdx>=0?payeeIdx:(payeeIdx2>=0?payeeIdx2:-1);
+    if(pIdx<0&&rIdx<0)continue;
+    // 检查后续1-2行的短行作为续行
+    for(let j=i+1;j<Math.min(correctedLines.length,i+3);j++){
+      const cc=correctedLines[j].replace(/\s+/g,'');
+      if(!cc)continue;
+      if(cc.length<2||cc.length>10)continue;
+      if(/[:：]/.test(cc))break;
+      if(/\d{4,}/.test(cc))break;
+      if(/银行|账号|金额|日期|客户|开户|支付|业务|ORG|BANK|中国|CNY|人民币|用途|附言|打印|记账|交易|报文|发起|接收|扣账|凭证|验证|回单|重要/.test(cc))break;
+      // 两个标签在同一行：付款人名称在行首、名字长，更易被截断，续行优先给付款人
+      if(pIdx>=0&&rIdx>=0){
+        // 如果收款人名称到了行尾且名字完整（以"公司/企业/店"结尾），续行给付款人
+        const payeePart=clean.slice(rIdx);
+        if(/公司|企业|店|厂|行社|中心|集团/.test(payeePart)&&payeePart.length>12){
+          payerConts.push(cc); // 收款人名字完整，续行是付款人的
+        }else{
+          payerConts.push(cc); // 默认给付款人（左侧，名字长，更易被截断）
+        }
+      }else if(pIdx>=0){
+        payerConts.push(cc);
+      }else if(rIdx>=0){
+        payeeConts.push(cc);
+      }
+      break;
+    }
+  }
   // label行名称为优先，其次紧凑提取名，再次普通候选
   const payerRaw=namesFromLabels[0]||priorityCandidates[0]||candidates[0]||'';
   const payeeRaw=namesFromLabels[1]||(priorityCandidates[1]&&priorityCandidates[1]!==(namesFromLabels[0]||priorityCandidates[0]||candidates[0]||'')?priorityCandidates[1]:priorityCandidates.find((c,i)=>i>0&&c!==(namesFromLabels[0]||priorityCandidates[0]||candidates[0]||'')))||candidates.find((c,idx)=>idx>0&&c!==(namesFromLabels[0]||priorityCandidates[0]||candidates[0]||''))||candidates[1]||'';
   // 不管走哪条分支，都过一遍通用清洗：剥掉竖排标签残字（如"志"）、标签词、长账号数字——不写死任何公司名。
-  const payer=pdfSplitCleanPartyName(payerRaw);
-  const payee=pdfSplitCleanPartyName(payeeRaw);
+  let payer=pdfSplitCleanPartyName(payerRaw);
+  let payee=pdfSplitCleanPartyName(payeeRaw);
+  // 附加续行文字到名称末尾（如"四川查林...丽水型" + "苑药店" → "四川查林...丽水型苑药店"）
+  for(const cont of payerConts){
+    if(cont&&payer&&!payer.endsWith(cont)){
+      const merged=pdfSplitCleanPartyName(payer+cont);
+      if(merged.length>payer.length)payer=merged;
+    }
+  }
+  for(const cont of payeeConts){
+    if(cont&&payee&&!payee.endsWith(cont)){
+      const merged=pdfSplitCleanPartyName(payee+cont);
+      if(merged.length>payee.length)payee=merged;
+    }
+  }
   const core=pdfSplitExtractCoreFields(compact);
   return {amount:amountInfo.amount,amountWarning:pdfSplitCleanAmountWarning(amountInfo.amount,amountInfo.warning),amountSource:amountInfo.source,payer,payee,rawText:joined,...core};
 }
