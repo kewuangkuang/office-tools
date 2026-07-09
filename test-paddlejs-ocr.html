@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <title>Paddle.js OCR 测试</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <style>
 body{font-family:system-ui,sans-serif;max-width:700px;margin:40px auto;padding:0 20px;}
 h1{font-size:20px;}
@@ -11,7 +12,7 @@ h1{font-size:20px;}
 #status.err{background:#fef2f2;color:#991b1b;}
 #status.loading{background:#fffbeb;color:#92400e;}
 img{max-width:100%;border:1px solid #ddd;border-radius:6px;margin:12px 0;}
-canvas{display:none;}
+#fileInput{margin-top:8px;font-size:14px;}
 </style>
 </head>
 <body>
@@ -19,79 +20,122 @@ canvas{display:none;}
 <p>测试 <code>@paddlejs-models/ocr@1.2.4</code> 能否通过 esm.sh CDN 在浏览器中运行中文 OCR。</p>
 <div id="status" class="loading">正在加载 OCR 模型（首次约 10-30 秒，需从百度 CDN 下载模型）...</div>
 <div>
-  <label>或上传自己的图片测试：</label><br>
-  <input type="file" id="fileInput" accept="image/*" style="margin-top:8px;">
+  <label>上传 PDF 或图片测试：</label><br>
+  <input type="file" id="fileInput" accept=".pdf,image/*" style="margin-top:8px;">
 </div>
-<img id="testImg" crossorigin="anonymous" src="">
-<canvas id="canvas"></canvas>
+<div id="previewArea"></div>
 <h2>识别结果</h2>
 <pre id="result" style="background:#f8f8f8;padding:12px;border-radius:8px;min-height:60px;font-size:14px;">等待识别...</pre>
 
 <script type="module">
 const statusEl = document.getElementById('status');
 const resultEl = document.getElementById('result');
-const imgEl = document.getElementById('testImg');
-const canvas = document.getElementById('canvas');
+const previewArea = document.getElementById('previewArea');
 const fileInput = document.getElementById('fileInput');
+
+pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
 function setStatus(msg, type) {
   statusEl.textContent = msg;
   statusEl.className = type;
 }
 
-try {
-  setStatus('正在从 esm.sh 加载 @paddlejs-models/ocr ...', 'loading');
+async function recognizeCanvas(canvas) {
+  const ocrModule = await import('https://esm.sh/@paddlejs-models/ocr@1.2.4');
+  await ocrModule.init();
+  return ocrModule;
+}
 
-  const ocr = await import('https://esm.sh/@paddlejs-models/ocr@1.2.4');
+// 将 PDF 页面渲染成 canvas
+async function pdfPageToCanvas(file, pageIndex) {
+  const arrayBuffer = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+  const page = await pdf.getPage(pageIndex + 1);
+  const scale = 2;
+  const viewport = page.getViewport({ scale });
+  const canvas = document.createElement('canvas');
+  canvas.width = viewport.width;
+  canvas.height = viewport.height;
+  const ctx = canvas.getContext('2d');
+  await page.render({ canvasContext: ctx, viewport }).promise;
+  return { canvas, totalPages: pdf.numPages };
+}
 
-  setStatus('正在初始化 OCR 模型（下载模型中，请稍候）...', 'loading');
-  await ocr.init();
+// 将图片文件加载为 HTMLImageElement
+function imageFileToImg(file) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => { URL.revokeObjectURL(url); resolve(img); };
+    img.onerror = reject;
+    img.src = url;
+  });
+}
 
-  setStatus('OCR 模型加载成功！正在生成测试图片...', 'ok');
-
-  // 生成一张含中文文字的 canvas 图片
-  const c = document.createElement('canvas');
-  c.width = 400; c.height = 120;
-  const ctx = c.getContext('2d');
-  ctx.fillStyle = '#fff';
-  ctx.fillRect(0, 0, 400, 120);
-  ctx.fillStyle = '#000';
-  ctx.font = '24px sans-serif';
-  ctx.fillText('付款人：张三  金额：12,345.67元', 20, 40);
-  ctx.fillText('收款人：李四  日期：2026-07-09', 20, 80);
-
-  const dataUrl = c.toDataURL('image/png');
-  imgEl.src = dataUrl;
-
-  // 等图片加载完
-  await new Promise(r => { imgEl.onload = r; });
-
+async function doRecognize(input) {
   setStatus('正在识别...', 'loading');
   const t0 = performance.now();
-  const res = await ocr.recognize(imgEl);
-  const dt = ((performance.now() - t0) / 1000).toFixed(2);
+  try {
+    const res = await ocrInstance.recognize(input);
+    const dt = ((performance.now() - t0) / 1000).toFixed(2);
+    const text = Array.isArray(res.text) ? res.text.join('\n') : String(res.text || '');
+    resultEl.textContent = `识别耗时：${dt}s\n识别结果：\n${text}`;
+    setStatus(`识别完成！耗时 ${dt}s`, text ? 'ok' : 'err');
+  } catch(e) {
+    resultEl.textContent = '识别失败：' + e.message;
+    setStatus('识别失败', 'err');
+  }
+}
 
-  const text = Array.isArray(res.text) ? res.text.join('\n') : String(res.text || '');
-  resultEl.textContent = `识别耗时：${dt}s\n识别结果：\n${text}`;
-  setStatus(`OCR 识别完成！耗时 ${dt}s` + (text.includes('张三') || text.includes('金额') ? ' — 中文识别正常' : ' — 请检查结果'), text.includes('张三') || text.includes('金额') ? 'ok' : 'err');
+let ocrInstance = null;
 
-  // 支持用户上传自己的图片
+try {
+  setStatus('正在从 esm.sh 加载 @paddlejs-models/ocr ...', 'loading');
+  ocrInstance = await import('https://esm.sh/@paddlejs-models/ocr@1.2.4');
+
+  setStatus('正在初始化 OCR 模型（下载模型中，请稍候）...', 'loading');
+  await ocrInstance.init();
+
+  setStatus('OCR 模型加载成功！请上传 PDF 或图片进行测试。', 'ok');
+  resultEl.textContent = '模型就绪，请上传文件。';
+
   fileInput.onchange = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = async (ev) => {
-      imgEl.src = ev.target.result;
-      await new Promise(r => { imgEl.onload = r; });
-      setStatus('正在识别上传图片...', 'loading');
-      const t1 = performance.now();
-      const res2 = await ocr.recognize(imgEl);
-      const dt2 = ((performance.now() - t1) / 1000).toFixed(2);
-      const text2 = Array.isArray(res2.text) ? res2.text.join('\n') : String(res2.text || '');
-      resultEl.textContent = `识别耗时：${dt2}s\n识别结果：\n${text2}`;
-      setStatus(`识别完成！耗时 ${dt2}s`, 'ok');
-    };
-    reader.readAsDataURL(file);
+    previewArea.innerHTML = '';
+
+    if (file.type === 'application/pdf') {
+      setStatus('正在解析 PDF...', 'loading');
+      try {
+        const { canvas, totalPages } = await pdfPageToCanvas(file, 0);
+        canvas.style.maxWidth = '100%';
+        canvas.style.border = '1px solid #ddd';
+        canvas.style.borderRadius = '6px';
+        canvas.style.margin = '12px 0';
+        previewArea.appendChild(canvas);
+        if (totalPages > 1) {
+          const info = document.createElement('p');
+          info.style.cssText = 'font-size:13px;color:#666;';
+          info.textContent = `共 ${totalPages} 页，当前识别第 1 页`;
+          previewArea.appendChild(info);
+        }
+        await doRecognize(canvas);
+      } catch(e) {
+        setStatus('PDF 解析失败：' + e.message, 'err');
+        resultEl.textContent = 'PDF 解析失败：' + e.message;
+      }
+    } else {
+      setStatus('正在加载图片...', 'loading');
+      try {
+        const img = await imageFileToImg(file);
+        img.style.maxWidth = '100%';
+        previewArea.appendChild(img);
+        await doRecognize(img);
+      } catch(e) {
+        setStatus('图片加载失败：' + e.message, 'err');
+        resultEl.textContent = '图片加载失败：' + e.message;
+      }
+    }
   };
 
 } catch (e) {
