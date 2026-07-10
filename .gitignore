@@ -2,3 +2,6 @@
 graphify-out/
 node_modules/
 *.log
+.DS_Store
+*.traineddata
+test-receipt.pdf
