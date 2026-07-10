@@ -1,0 +1,4 @@
+.graphify-venv/
+graphify-out/
+node_modules/
+*.log
