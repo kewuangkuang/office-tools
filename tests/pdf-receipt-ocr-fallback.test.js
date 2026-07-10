@@ -5,7 +5,8 @@ const vm = require('node:vm');
 const path = require('node:path');
 
 const root = path.resolve(__dirname, '..');
-const files = ['index.html', 'excel-tools.html'];
+const canonicalFiles = ['index.html'];
+const legacyFile = 'excel-tools.html';
 
 function source(name = 'index.html') {
   return fs.readFileSync(path.join(root, name), 'utf8');
@@ -61,8 +62,8 @@ test('missing fields and merge only fill empty primary values', () => {
   assert.deepEqual(Array.from(merged.accounts), ['12345678']);
 });
 
-test('both entry points use the pre-Paddle Tesseract receipt path', () => {
-  for (const file of files) {
+test('canonical entry uses the pre-Paddle Tesseract receipt path', () => {
+  for (const file of canonicalFiles) {
     const html = source(file);
     assert.match(html, /function pdfSplitRunTesseractOcr\s*\(/, `${file} Tesseract adapter`);
     const coordinator = html.slice(html.indexOf('async function pdfSplitOcrReceiptCanvas'), html.indexOf('function pdfSplitBuildReceiptBaseName'));
@@ -78,7 +79,7 @@ test('two-column BOC payer and payee labels are extracted independently from OCR
     '付款人名称: 四川杏林医药连锁有限责任公司达州市丽水翠苑药店    收款人名称: 四川久远银海软件股份有限公司',
     '付款人开户行: 中国银行达州通川支行    收款人开户行: 中国农业银行股份有限公司'
   ];
-  for (const file of files) {
+  for (const file of canonicalFiles) {
     const { pdfSplitExtractPairedPartyNames: parse } = loadPartyParser(source(file));
     const fields = parse(lines);
     assert.equal(fields.payer, '四川杏林医药连锁有限责任公司达州市丽水翠苑药店', `${file} payer`);
@@ -92,7 +93,7 @@ test('actual Lishui Tesseract output still yields both parties when OCR confuses
     '苑 药店',
     '付款 人 开户 行 : 中 国 银 行 达州 通 川 支 行 收 款 人 开户 行 :中 国 农 业 银行 股份 有 限 公司'
   ];
-  for (const file of files) {
+  for (const file of canonicalFiles) {
     const { pdfSplitExtractPairedPartyNames: parse } = loadPartyParser(source(file));
     const fields = parse(lines);
     assert.match(fields.payer, /^四川杏林医药连锁/, `${file} payer from actual OCR`);
@@ -101,8 +102,8 @@ test('actual Lishui Tesseract output still yields both parties when OCR confuses
   }
 });
 
-test('both entry points apply scan-image receipt gap detection before equal splitting', () => {
-  for (const file of files) {
+test('canonical entry applies scan-image receipt gap detection before equal splitting', () => {
+  for (const file of canonicalFiles) {
     const html = source(file);
     assert.match(html, /function pdfSplitDetectReceiptGapsFromImage\s*\(/, `${file} image gap detector`);
     assert.match(html, /pdfSplitDetectReceiptGapsFromImage\(canvas,canvas\.width,canvas\.height,manualCount\)/, `${file} uses image gap detector for scans`);
@@ -111,7 +112,7 @@ test('both entry points apply scan-image receipt gap detection before equal spli
 });
 
 test('scan pages with one compact receipt do not become a footer fragment', () => {
-  for (const file of files) {
+  for (const file of canonicalFiles) {
     const html = source(file);
     assert.match(html, /function pdfSplitShouldKeepSingleScanReceipt\s*\(/, `${file} single-receipt guard`);
     assert.match(html, /pdfSplitShouldKeepSingleScanReceipt\(canvas,manualCount\)/, `${file} applies single-receipt guard`);
@@ -119,7 +120,7 @@ test('scan pages with one compact receipt do not become a footer fragment', () =
 });
 
 test('missing party names trigger a focused top-of-receipt OCR pass', () => {
-  for (const file of files) {
+  for (const file of canonicalFiles) {
     const html = source(file);
     assert.match(html, /function pdfSplitCreatePartyNameOcrCanvas\s*\(/, `${file} focused name canvas`);
     const coordinator = html.slice(html.indexOf('async function pdfSplitOcrReceiptCanvas'), html.indexOf('function pdfSplitBuildReceiptBaseName'));
@@ -127,11 +128,19 @@ test('missing party names trigger a focused top-of-receipt OCR pass', () => {
   }
 });
 
-test('both entry points send the original receipt crop to OCR so small party labels survive', () => {
-  for (const file of files) {
+test('canonical entry sends the original receipt crop to OCR so small party labels survive', () => {
+  for (const file of canonicalFiles) {
     const html = source(file);
     const receiptLoop = html.slice(html.indexOf('for(let n=0;n<receiptCrops.length;n++)'), html.indexOf('const baseName=pdfSplitBuildReceiptBaseName'));
     assert.match(receiptLoop, /pdfSplitOcrReceiptCanvas\(cc,cropLines,layoutFields\)/, `${file} OCR uses the original crop`);
     assert.doesNotMatch(receiptLoop, /pdfSplitOcrReceiptCanvas\(processed,cropLines,layoutFields\)/, `${file} must not OCR the destructive preprocessing output`);
   }
+});
+
+test('legacy local entry redirects to the canonical application without duplicating business code', () => {
+  const html = source(legacyFile);
+  assert.match(html, /new URL\('index\.html',\s*location\.href\)/, 'legacy entry redirects to sibling index.html');
+  assert.match(html, /<a[^>]+href="index\.html"/i, 'legacy entry has a no-script fallback link');
+  assert.doesNotMatch(html, /function\s+pdfSplit/, 'legacy entry must not include receipt business functions');
+  assert.match(source('index.html'), /async function pdfSplitOcrReceiptCanvas/, 'canonical entry keeps receipt business code');
 });
