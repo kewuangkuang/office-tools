@@ -40,6 +40,19 @@ function loadPartyParser(html) {
   return context.api;
 }
 
+function loadWordPartyParser(html) {
+  const cleanStart = html.indexOf('function pdfSplitCleanPartyName(');
+  const cleanEnd = html.indexOf('\nfunction pdfSplitPickBetween(', cleanStart);
+  const parserStart = html.indexOf('function pdfSplitExtractPartyNamesFromOcrWords(');
+  const parserEnd = html.indexOf('\nfunction pdfSplitPickBetween(', parserStart);
+  assert.ok(cleanStart >= 0 && cleanEnd > cleanStart, 'party-name cleaner should exist');
+  assert.ok(parserStart >= 0 && parserEnd > parserStart, 'word-coordinate party parser should exist');
+  const context = { pdfSplitSafeFileName: value => String(value || '') };
+  vm.createContext(context);
+  vm.runInContext(`${html.slice(cleanStart, cleanEnd)}\n${html.slice(parserStart, parserEnd)}\nthis.api={pdfSplitExtractPartyNamesFromOcrWords};`, context);
+  return context.api;
+}
+
 test('required OCR fields follow the selected receipt naming mode', () => {
   const { pdfSplitRequiredReceiptFields: required } = loadPureHelpers(source());
   assert.deepEqual(Array.from(required('amount', '')), ['amount']);
@@ -102,6 +115,18 @@ test('actual Lishui Tesseract output still yields both parties when OCR confuses
   }
 });
 
+test('actual Lishui OCR word coordinates recover both party names even if label text is imperfect', () => {
+  const words = [
+    ['付款', 91, 181], ['人', 152, 181], ['名', 172, 181], ['称', 202, 181], [':四', 222, 182], ['川', 268, 181], ['杏林', 306, 181], ['医药', 339, 181], ['连锁', 388, 177], ['有', 435, 181], ['限', 460, 182], ['责任', 485, 181], ['公司', 530, 181], ['达州', 577, 181], ['市', 631, 177], ['丽水', 654, 181], ['到', 701, 181],
+    ['收', 771, 181], ['款', 802, 177], ['人', 825, 181], ['名', 845, 181], ['称', 874, 181], [':四', 894, 182], ['川', 942, 181], ['入', 966, 177], ['远', 987, 182], ['银', 1009, 181], ['海', 1036, 181], ['软件', 1075, 181], ['股份', 1124, 181], ['有', 1173, 182], ['限', 1181, 182], ['公司', 1203, 181],
+    ['苑', 234, 213], ['药店', 264, 212]
+  ].map(([text, x0, y0]) => ({ text, bbox: { x0, y0, x1: x0 + 20, y1: y0 + 22 } }));
+  const { pdfSplitExtractPartyNamesFromOcrWords: parse } = loadWordPartyParser(source());
+  const fields = parse(words, 1489, 1005);
+  assert.match(fields.payer, /^四川杏林医药连锁有限责任公司达州市丽水到苑药店$/, 'left name from OCR coordinates');
+  assert.match(fields.payee, /^四川入远银海软件股份有限公司$/, 'right name from OCR coordinates');
+});
+
 test('canonical entry applies scan-image receipt gap detection before equal splitting', () => {
   for (const file of canonicalFiles) {
     const html = source(file);
@@ -125,6 +150,7 @@ test('missing party names trigger a focused top-of-receipt OCR pass', () => {
     assert.match(html, /function pdfSplitCreatePartyNameOcrCanvas\s*\(/, `${file} focused name canvas`);
     const coordinator = html.slice(html.indexOf('async function pdfSplitOcrReceiptCanvas'), html.indexOf('function pdfSplitBuildReceiptBaseName'));
     assert.match(coordinator, /pdfSplitCreatePartyNameOcrCanvas\(canvas\)/, `${file} uses focused name OCR`);
+    assert.match(coordinator, /pdfSplitExtractPartyNamesFromOcrWords\(tess\.words,canvas\.width,canvas\.height\)/, `${file} uses OCR word coordinates before text fallback`);
   }
 });
 

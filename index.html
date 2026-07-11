@@ -2060,8 +2060,9 @@ async function pdfSplitRunTesseractOcr(canvas){
     const {data}=await worker.recognize(canvas);
     const rawLines=(data?.text||'').split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
     const lines=rawLines.filter(s=>s.length>=2);
+    const words=(data?.words||[]).map(word=>({text:word.text||'',bbox:word.bbox||null}));
     console.log('[Tesseract] 识别行数:', lines.length, '前5行:', lines.slice(0,5));
-    return {lines,blocks:[],raw:data};
+    return {lines,words,blocks:[],raw:data};
   }catch(e){
     console.warn('Tesseract 识别失败',e);
     return {lines:[],blocks:[],raw:null};
@@ -4098,6 +4099,55 @@ function pdfSplitExtractPairedPartyNames(lines){
   }
   return result;
 }
+function pdfSplitExtractPartyNamesFromOcrWords(words, canvasW, canvasH){
+  // Tesseract 已正确识别出公司字，但有时把“付款人名称”标签拆错；
+  // 中国银行回单的名称固定在顶部左右两栏，因此以坐标取字，不再只依赖标签文字。
+  if(!Array.isArray(words)||!canvasW||!canvasH)return {payer:'',payee:''};
+  const candidateWords=words.filter(word=>{
+    const box=word?.bbox;
+    if(!box||!String(word.text||'').trim())return false;
+    const centerY=(box.y0+box.y1)/2;
+    return centerY>=canvasH*0.10&&centerY<=canvasH*0.30;
+  });
+  const rows=[];
+  candidateWords.slice().sort((a,b)=>a.bbox.y0-b.bbox.y0).forEach(word=>{
+    const centerY=(word.bbox.y0+word.bbox.y1)/2;
+    let row=rows.find(item=>Math.abs(item.y-centerY)<12);
+    if(!row){ row={y:centerY,words:[]}; rows.push(row); }
+    row.words.push(word);
+  });
+  rows.forEach(row=>{ row.words.sort((a,b)=>a.bbox.x0-b.bbox.x0); row.text=row.words.map(word=>word.text).join(''); });
+  rows.sort((a,b)=>a.y-b.y);
+  const nameRowIndex=rows.findIndex(row=>/名.*称|名称/.test(row.text));
+  if(nameRowIndex<0)return {payer:'',payee:''};
+  const nameRows=[rows[nameRowIndex]];
+  const nextRow=rows[nameRowIndex+1];
+  // 付款方长名称可能在下一行续写；只接紧邻的短行，不能误吃到开户行。
+  if(nextRow&&nextRow.y-rows[nameRowIndex].y<canvasH*0.06&&!/开户|账号|金额|日期|银行/.test(nextRow.text))nameRows.push(nextRow);
+  const nameWords=nameRows.flatMap(row=>row.words);
+  const cleanSide=(side)=>{
+    // OCR 同一行各词的 y 坐标会有数像素抖动，不能简单全局按 y 排序，
+    // 否则“连锁/市”等略高的字会被排到标签之前。
+    const rows=[];
+    side.slice().sort((a,b)=>a.bbox.y0-b.bbox.y0).forEach(word=>{
+      const centerY=(word.bbox.y0+word.bbox.y1)/2;
+      let row=rows.find(item=>Math.abs(item.y-centerY)<12);
+      if(!row){ row={y:centerY,words:[]}; rows.push(row); }
+      row.words.push(word);
+    });
+    const text=rows.sort((a,b)=>a.y-b.y)
+      .map(row=>row.words.sort((a,b)=>a.bbox.x0-b.bbox.x0).map(word=>word.text).join(''))
+      .join('').replace(/\s+/g,'')
+      .replace(/付歌人|付欧人|付软人|付教人/g,'付款人')
+      .replace(/收蒜人|收获人|收区人|收鞭人|收歌人|收丈人/g,'收款人');
+    const name=pdfSplitCleanPartyName(text);
+    return /公司|企业|店|厂|集团|中心|药房|医院|学校/.test(name)?name:'';
+  };
+  return {
+    payer:cleanSide(nameWords.filter(word=>word.bbox.x0<canvasW*0.50)),
+    payee:cleanSide(nameWords.filter(word=>word.bbox.x0>=canvasW*0.50))
+  };
+}
 function pdfSplitPickBetween(text, start, endWords){
   const s=text.indexOf(start);
   if(s<0)return '';
@@ -4515,6 +4565,8 @@ async function pdfSplitOcrReceiptCanvas(canvas, fallbackLines, layoutFields){
         lines=lines.concat(tess.lines);
         const ocrFields=pdfSplitExtractReceiptFields(lines);
         fields=pdfSplitMergeMissingReceiptFields(fields,ocrFields);
+        const wordNames=pdfSplitExtractPartyNamesFromOcrWords(tess.words,canvas.width,canvas.height);
+        fields=pdfSplitMergeMissingReceiptFields(fields,wordNames);
         fields.rawText=[fields.rawText,ocrFields.rawText].filter(Boolean).join('\n');
         if(!fields.payer||!fields.payee){
           const names=pdfSplitExtractNamesFromOcrText(tess.lines);
