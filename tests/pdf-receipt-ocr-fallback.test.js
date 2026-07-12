@@ -157,6 +157,19 @@ test('Tesseract v5 nested blocks are flattened into OCR words', () => {
   ]);
 });
 
+test('empty top-level Tesseract words fall back to nested block coordinates', () => {
+  const { pdfSplitFlattenTesseractWords: flatten } = loadTesseractWordAdapter(source());
+  const words = flatten({
+    words: [],
+    blocks: [{ paragraphs: [{ lines: [{
+      words: [{ text: '收款人名称', bbox: { x0: 200, y0: 20, x1: 280, y1: 45 } }]
+    }] }] }]
+  });
+  assert.deepEqual(JSON.parse(JSON.stringify(words)), [
+    { text: '收款人名称', bbox: { x0: 200, y0: 20, x1: 280, y1: 45 } }
+  ]);
+});
+
 test('canonical entry applies scan-image receipt gap detection before equal splitting', () => {
   for (const file of canonicalFiles) {
     const html = source(file);

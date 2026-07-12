@@ -2056,7 +2056,7 @@ async function ensureTesseractLoaded(){
 function pdfSplitFlattenTesseractWords(data){
   // Tesseract.js 5 的词坐标位于 blocks → paragraphs → lines → words，
   // 并不在 data.words 顶层。兼容顶层数组是为了不绑死未来版本的返回格式。
-  if(Array.isArray(data?.words))return data.words.filter(Boolean).map(word=>({text:word.text||'',bbox:word.bbox||null}));
+  if(Array.isArray(data?.words)&&data.words.length)return data.words.filter(Boolean).map(word=>({text:word.text||'',bbox:word.bbox||null}));
   const words=[];
   (data?.blocks||[]).forEach(block=>{
     (block?.paragraphs||[]).forEach(paragraph=>{
