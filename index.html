@@ -2053,6 +2053,22 @@ async function ensureTesseractLoaded(){
   })();
   return tesseractInitPromise;
 }
+function pdfSplitFlattenTesseractWords(data){
+  // Tesseract.js 5 的词坐标位于 blocks → paragraphs → lines → words，
+  // 并不在 data.words 顶层。兼容顶层数组是为了不绑死未来版本的返回格式。
+  if(Array.isArray(data?.words))return data.words.filter(Boolean).map(word=>({text:word.text||'',bbox:word.bbox||null}));
+  const words=[];
+  (data?.blocks||[]).forEach(block=>{
+    (block?.paragraphs||[]).forEach(paragraph=>{
+      (paragraph?.lines||[]).forEach(line=>{
+        (line?.words||[]).forEach(word=>{
+          if(word)words.push({text:word.text||'',bbox:word.bbox||null});
+        });
+      });
+    });
+  });
+  return words;
+}
 async function pdfSplitRunTesseractOcr(canvas){
   if(!await ensureTesseractLoaded())return {lines:[],blocks:[],raw:null};
   try{
@@ -2060,7 +2076,7 @@ async function pdfSplitRunTesseractOcr(canvas){
     const {data}=await worker.recognize(canvas);
     const rawLines=(data?.text||'').split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
     const lines=rawLines.filter(s=>s.length>=2);
-    const words=(data?.words||[]).map(word=>({text:word.text||'',bbox:word.bbox||null}));
+    const words=pdfSplitFlattenTesseractWords(data);
     console.log('[Tesseract] 识别行数:', lines.length, '前5行:', lines.slice(0,5));
     return {lines,words,blocks:[],raw:data};
   }catch(e){

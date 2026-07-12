@@ -53,6 +53,16 @@ function loadWordPartyParser(html) {
   return context.api;
 }
 
+function loadTesseractWordAdapter(html) {
+  const start = html.indexOf('function pdfSplitFlattenTesseractWords(');
+  const end = html.indexOf('\nasync function pdfSplitRunTesseractOcr(', start);
+  assert.ok(start >= 0 && end > start, 'Tesseract word adapter should exist before OCR runner');
+  const context = {};
+  vm.createContext(context);
+  vm.runInContext(`${html.slice(start, end)}\nthis.api={pdfSplitFlattenTesseractWords};`, context);
+  return context.api;
+}
+
 test('required OCR fields follow the selected receipt naming mode', () => {
   const { pdfSplitRequiredReceiptFields: required } = loadPureHelpers(source());
   assert.deepEqual(Array.from(required('amount', '')), ['amount']);
@@ -125,6 +135,26 @@ test('actual Lishui OCR word coordinates recover both party names even if label 
   const fields = parse(words, 1489, 1005);
   assert.match(fields.payer, /^四川杏林医药连锁有限责任公司达州市丽水到苑药店$/, 'left name from OCR coordinates');
   assert.match(fields.payee, /^四川入远银海软件股份有限公司$/, 'right name from OCR coordinates');
+});
+
+test('Tesseract v5 nested blocks are flattened into OCR words', () => {
+  const { pdfSplitFlattenTesseractWords: flatten } = loadTesseractWordAdapter(source());
+  const words = flatten({
+    blocks: [{
+      paragraphs: [{
+        lines: [{
+          words: [
+            { text: '付款人名称', bbox: { x0: 10, y0: 20, x1: 80, y1: 45 } },
+            { text: '测试公司', bbox: { x0: 90, y0: 20, x1: 150, y1: 45 } }
+          ]
+        }]
+      }]
+    }]
+  });
+  assert.deepEqual(JSON.parse(JSON.stringify(words)), [
+    { text: '付款人名称', bbox: { x0: 10, y0: 20, x1: 80, y1: 45 } },
+    { text: '测试公司', bbox: { x0: 90, y0: 20, x1: 150, y1: 45 } }
+  ]);
 });
 
 test('canonical entry applies scan-image receipt gap detection before equal splitting', () => {
