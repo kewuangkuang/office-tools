@@ -206,6 +206,12 @@ test('unrecognized party names expose compact OCR diagnostics in the preview', (
   assert.match(preview, /r\.fields\.partyOcrDebug/, 'preview reads the receipt diagnostic field');
 });
 
+test('receipt result preview does not clip party fields below the thumbnail row', () => {
+  const renderer = source().slice(source().indexOf('function pdfSplitRenderResults'), source().indexOf('function pdfSplitDataUrlToBytes'));
+  assert.match(renderer, /previewThumbs\.style\.maxHeight=mode==='receipt'\?'none':'300px'/, 'receipt mode expands the result area for field metadata');
+  assert.match(renderer, /previewThumbs\.style\.overflowY=mode==='receipt'\?'visible':'auto'/, 'receipt metadata remains visible instead of scrolling under the export controls');
+});
+
 test('canonical entry sends the original receipt crop to OCR so small party labels survive', () => {
   for (const file of canonicalFiles) {
     const html = source(file);

@@ -4947,7 +4947,11 @@ function pdfSplitRenderResults(mode){
       ${meta}
     </div>`;
   });
-  document.getElementById('pdfSplitPreviewThumbs').innerHTML=thumbs;
+  const previewThumbs=document.getElementById('pdfSplitPreviewThumbs');
+  previewThumbs.innerHTML=thumbs;
+  // 回单卡片包含金额、双方名称、流水和 OCR 诊断；不能被固定 300px 高度裁掉。
+  previewThumbs.style.maxHeight=mode==='receipt'?'none':'300px';
+  previewThumbs.style.overflowY=mode==='receipt'?'visible':'auto';
   document.getElementById('pdfSplitResultStats').innerHTML=`<div class="stat-item"><div class="stat-value">${pdfSplitResults.length}</div><div class="stat-label">拆分文件数</div></div>`;
   document.querySelector('input[name="pdfSplitExportFormat"][value="pdf"]').checked=true;
   pdfSplitUpdateExportFormat();
