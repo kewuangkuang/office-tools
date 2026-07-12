@@ -4558,6 +4558,7 @@ function pdfSplitMergeMissingReceiptFields(primary,supplement){
 }
 async function pdfSplitOcrReceiptCanvas(canvas, fallbackLines, layoutFields){
   let lines=fallbackLines||[];
+  const partyOcrTrace=[];
   const guessed=pdfSplitExtractReceiptFields(lines);
   let fields={
     amount: layoutFields?.amount || guessed.amount || '',
@@ -4583,6 +4584,7 @@ async function pdfSplitOcrReceiptCanvas(canvas, fallbackLines, layoutFields){
         fields=pdfSplitMergeMissingReceiptFields(fields,ocrFields);
         const wordNames=pdfSplitExtractPartyNamesFromOcrWords(tess.words,canvas.width,canvas.height);
         fields=pdfSplitMergeMissingReceiptFields(fields,wordNames);
+        partyOcrTrace.push(`首轮词${tess.words?.length||0}，左栏${wordNames.payer?'命中':'未命中'}，右栏${wordNames.payee?'命中':'未命中'}`);
         fields.rawText=[fields.rawText,ocrFields.rawText].filter(Boolean).join('\n');
         if(!fields.payer||!fields.payee){
           const names=pdfSplitExtractNamesFromOcrText(tess.lines);
@@ -4590,7 +4592,9 @@ async function pdfSplitOcrReceiptCanvas(canvas, fallbackLines, layoutFields){
         }
         // 整张扫描回单能认出金额却漏掉名称时，只放大顶部名称栏再识别一次。
         if(!fields.payer||!fields.payee){
-          const focused=await pdfSplitRunTesseractOcr(pdfSplitCreatePartyNameOcrCanvas(canvas));
+          const focusedCanvas=pdfSplitCreatePartyNameOcrCanvas(canvas);
+          const focused=await pdfSplitRunTesseractOcr(focusedCanvas);
+          partyOcrTrace.push(`名称区词${focused.words?.length||0}，文本行${focused.lines?.length||0}`);
           if(focused.lines?.length){
             const focusedFields=pdfSplitExtractReceiptFields(focused.lines);
             const focusedNames=pdfSplitExtractNamesFromOcrText(focused.lines);
@@ -4607,6 +4611,9 @@ async function pdfSplitOcrReceiptCanvas(canvas, fallbackLines, layoutFields){
     }catch(e){ console.warn('Tesseract 回单识别失败',e); }
   }else{
     fields.ocrSource='文字层';
+  }
+  if(!fields.payer||!fields.payee){
+    fields.partyOcrDebug=partyOcrTrace.join('；')||(needsOcr?'OCR未返回可用名称数据':'未触发 OCR');
   }
   fields.amountWarning=pdfSplitCleanAmountWarning(fields.amount,fields.amountWarning);
   return fields;
@@ -4922,7 +4929,8 @@ function pdfSplitRenderResults(mode){
       r.fields?.accounts?.length?`账号：${esc(r.fields.accounts.join(' / '))}`:''
     ].filter(Boolean).join('<br>');
     const source=r.fields?.ocrSource?`识别：${r.fields.ocrSource==='tesseract'?'Tesseract（请核对）':'文字层'}`:'';
-    const meta=mode==='receipt'&&r.fields?`<div style="font-size:10px;color:var(--gray-500);line-height:1.35;margin-top:2px;text-align:left;">金额：${esc(r.fields.amount||'未识别')}${warn}<br>付款：${esc(r.fields.payer||'未识别')}<br>收款：${esc(r.fields.payee||'未识别')}${extra?'<br>'+extra:''}${source?'<br>'+esc(source):''}</div>`:'';
+    const partyDebug=r.fields?.partyOcrDebug?`<br><span style="color:var(--gray-500);">名称诊断：${esc(r.fields.partyOcrDebug)}</span>`:'';
+    const meta=mode==='receipt'&&r.fields?`<div style="font-size:10px;color:var(--gray-500);line-height:1.35;margin-top:2px;text-align:left;">金额：${esc(r.fields.amount||'未识别')}${warn}<br>付款：${esc(r.fields.payer||'未识别')}<br>收款：${esc(r.fields.payee||'未识别')}${extra?'<br>'+extra:''}${source?'<br>'+esc(source):''}${partyDebug}</div>`:'';
     // 回单模式：文件名做成可编辑框，认错了当场改，改完直接导出（比死磕自动识别稳）。
     const nameField=mode==='receipt'
       ? `<input type="text" value="${esc(r.baseName||label)}" onchange="pdfSplitSetReceiptName(${i}, this.value)" title="文件名——识别错了直接在这里改" style="width:110px;font-size:11px;text-align:center;margin-top:4px;padding:3px 4px;border:1px solid var(--gray-300);border-radius:5px;color:var(--gray-700);outline:none;background:var(--card-bg,#fff);">`

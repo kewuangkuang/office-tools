@@ -197,6 +197,15 @@ test('missing party names trigger a focused top-of-receipt OCR pass', () => {
   }
 });
 
+test('unrecognized party names expose compact OCR diagnostics in the preview', () => {
+  const html = source();
+  const coordinator = html.slice(html.indexOf('async function pdfSplitOcrReceiptCanvas'), html.indexOf('function pdfSplitBuildReceiptBaseName'));
+  assert.match(coordinator, /partyOcrDebug/, 'OCR coordinator records party-name diagnostic boundaries');
+  const preview = html.slice(html.indexOf('function pdfSplitRenderResults'), html.indexOf('function pdfSplitShowPreview'));
+  assert.match(preview, /名称诊断：/, 'receipt preview renders diagnostics only when needed');
+  assert.match(preview, /r\.fields\.partyOcrDebug/, 'preview reads the receipt diagnostic field');
+});
+
 test('canonical entry sends the original receipt crop to OCR so small party labels survive', () => {
   for (const file of canonicalFiles) {
     const html = source(file);
