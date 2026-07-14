@@ -1,35 +1,7 @@
-# macOS
-.DS_Store
-
-# Editor
-.vscode/
-.idea/
-
-# Local env
-.env
-.env.*
-
-# Dependencies / build output if the project is refactored later
+.graphify-venv/
+graphify-out/
 node_modules/
-dist/
-build/
-
-# Temporary files
-tmp/
-temp/
-*.tmp
-
-# Office files used for local testing.
-# Keep real business files out of the public repo.
-*.xlsx
-*.xls
-*.csv
-*.pdf
-*.zip
-*.png
-*.jpg
-*.jpeg
-
-!docs/**/*.png
-!docs/**/*.jpg
-!docs/**/*.jpeg
+*.log
+.DS_Store
+*.traineddata
+test-receipt.pdf

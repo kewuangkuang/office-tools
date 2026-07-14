@@ -1973,6 +1973,64 @@ function pdfSplitLoadScript(src){
     document.head.appendChild(s);
   });
 }
+// ===== PaddleOCR（优先识别扫描件/图片型 PDF）=====
+let paddleOcrInitPromise=null;
+function pdfSplitGetPaddleGlobal(){
+  return window.PaddleOCRJS||window.PaddleOCR||window.PaddleOCRSDK||window.paddleOCR||window.paddleocr||null;
+}
+async function ensurePaddleOcrLoaded(){
+  if(window.__pdfSplitPaddleEngine)return true;
+  if(paddleOcrInitPromise)return paddleOcrInitPromise;
+  paddleOcrInitPromise=(async()=>{
+    let lib=pdfSplitGetPaddleGlobal();
+    if(!lib){
+      const local=['./paddleocr.js','./paddleocr.min.js','./paddleocr/paddleocr.js','./paddleocr/paddleocr.min.js','./ocr/paddleocr.js','./ocr/paddleocr.min.js'];
+      for(const src of local){ try{ await pdfSplitLoadScript(src); lib=pdfSplitGetPaddleGlobal(); if(lib)break; }catch(e){} }
+    }
+    if(!lib){
+      try{
+        await pdfSplitLoadScript('https://cdn.jsdelivr.net/npm/@paddlejs-models/ocr@1.2.4/lib/index.js');
+        if(window.paddlejs&&window.paddlejs.ocr){ await window.paddlejs.ocr.init(); window.__pdfSplitPaddleEngine=window.paddlejs.ocr; return true; }
+      }catch(e){ console.warn('Paddle.js OCR 加载失败',e); }
+      return false;
+    }
+    try{
+      const engine=typeof lib.create==='function'
+        ? await lib.create({det:true,rec:true,cls:true,structure:true,layout:true,lang:'ch'})
+        : (typeof lib.init==='function'?await lib.init({det:true,rec:true,cls:true,structure:true,layout:true,lang:'ch'}):lib);
+      window.__pdfSplitPaddleEngine=engine||lib;
+      return true;
+    }catch(e){ console.warn('PaddleOCR.js 初始化失败',e); return false; }
+  })();
+  return paddleOcrInitPromise;
+}
+function pdfSplitNormalizePaddleResult(raw){
+  const lines=[],blocks=[];
+  const walk=node=>{
+    if(node==null)return;
+    if(typeof node==='string'){ if(node.trim())lines.push(node.trim()); return; }
+    if(Array.isArray(node)){ node.forEach(walk); return; }
+    const text=node.text||node.label||node.value||node.words||node.transcription||node.recText||'';
+    if(Array.isArray(text))text.forEach(walk); else if(text)lines.push(String(text).trim());
+    if(node.bbox||node.box||node.rect||node.type)blocks.push(node);
+    const children=node.blocks||node.regions||node.layout||node.children||node.lines||node.ocrResults||node.result;
+    if(children)walk(children);
+  };
+  walk(raw);
+  return {lines:[...new Set(lines.filter(Boolean))],blocks,raw,ok:lines.some(s=>s.replace(/\s/g,'').length>=2)};
+}
+async function pdfSplitRunPaddleOcr(canvas){
+  if(!await ensurePaddleOcrLoaded())return {lines:[],blocks:[],raw:null,ok:false,error:'PaddleOCR 未加载'};
+  const engine=window.__pdfSplitPaddleEngine;
+  const options={layout:true,structure:true,ppStructure:true,splitBlocks:true,lang:'ch',recModel:'chinese_english_number_enhanced',detModel:'PP-OCR',amountPunctuation:'enhanced'};
+  const candidates=[engine?.recognize?.bind(engine),engine?.ocr?.bind(engine),engine?.run?.bind(engine),engine?.detect?.bind(engine)].filter(Boolean);
+  let lastError='PaddleOCR 无可用识别接口';
+  for(const fn of candidates){
+    try{ const result=pdfSplitNormalizePaddleResult(await fn(canvas,options)); if(result.ok)return result; }
+    catch(e){ lastError=e?.message||String(e); console.warn('PaddleOCR 识别失败，尝试下一个接口',e); }
+  }
+  return {lines:[],blocks:[],raw:null,ok:false,error:lastError};
+}
 // ===== Tesseract.js OCR（扫描件/图片型 PDF 识别用）=====
 let tesseractInitPromise=null;
 async function ensureTesseractLoaded(){
@@ -1995,60 +2053,51 @@ async function ensureTesseractLoaded(){
   })();
   return tesseractInitPromise;
 }
-function pdfSplitPreprocessForTesseract(src){
-  // 扫描件预处理：灰度化 + Otsu 自适应阈值二值化
-  // Otsu 比固定阈值更适应扫描件亮度不均，对"翠"等笔画密集字识别更准
-  const out=document.createElement('canvas');
-  out.width=src.width; out.height=src.height;
-  const ctx=out.getContext('2d',{alpha:false,willReadFrequently:true});
-  ctx.fillStyle='#fff';
-  ctx.fillRect(0,0,out.width,out.height);
-  ctx.drawImage(src,0,0);
-  const img=ctx.getImageData(0,0,out.width,out.height);
-  const d=img.data;
-  const w=out.width,h=out.height;
-  // 计算灰度直方图
-  const hist=new Array(256).fill(0);
-  const grays=new Uint8Array(w*h);
-  for(let i=0,j=0;i<d.length;i+=4,j++){
-    const g=Math.round(0.299*d[i]+0.587*d[i+1]+0.114*d[i+2]);
-    grays[j]=g; hist[g]++;
-  }
-  // Otsu 求最佳阈值
-  let total=w*h,sum=0;
-  for(let i=0;i<256;i++)sum+=i*hist[i];
-  let sumB=0,wB=0,maxVar=0,threshold=128;
-  for(let t=0;t<256;t++){
-    wB+=hist[t]; if(wB===0)continue;
-    const wF=total-wB; if(wF===0)break;
-    sumB+=t*hist[t];
-    const mB=sumB/wB, mF=(sum-sumB)/wF;
-    const v=wB*wF*(mB-mF)*(mB-mF);
-    if(v>maxVar){maxVar=v;threshold=t;}
-  }
-  // 二值化
-  for(let i=0,j=0;i<d.length;i+=4,j++){
-    const v=grays[j]<threshold?0:255;
-    d[i]=v; d[i+1]=v; d[i+2]=v; d[i+3]=255;
-  }
-  ctx.putImageData(img,0,0);
-  return out;
+function pdfSplitFlattenTesseractWords(data){
+  // Tesseract.js 5 的词坐标位于 blocks → paragraphs → lines → words，
+  // 并不在 data.words 顶层。兼容顶层数组是为了不绑死未来版本的返回格式。
+  if(Array.isArray(data?.words)&&data.words.length)return data.words.filter(Boolean).map(word=>({text:word.text||'',bbox:word.bbox||null}));
+  const words=[];
+  (data?.blocks||[]).forEach(block=>{
+    (block?.paragraphs||[]).forEach(paragraph=>{
+      (paragraph?.lines||[]).forEach(line=>{
+        (line?.words||[]).forEach(word=>{
+          if(word)words.push({text:word.text||'',bbox:word.bbox||null});
+        });
+      });
+    });
+  });
+  return words;
 }
 async function pdfSplitRunTesseractOcr(canvas){
   if(!await ensureTesseractLoaded())return {lines:[],blocks:[],raw:null};
   try{
     const worker=window.__pdfSplitTesseractWorker;
-    // 用温和预处理后的图去识别，保留原始尺寸比例（Tesseract 对版面敏感）
-    const preprocessed=pdfSplitPreprocessForTesseract(canvas);
-    const {data}=await worker.recognize(preprocessed);
+    const {data}=await worker.recognize(canvas);
     const rawLines=(data?.text||'').split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
     const lines=rawLines.filter(s=>s.length>=2);
+    const words=pdfSplitFlattenTesseractWords(data);
     console.log('[Tesseract] 识别行数:', lines.length, '前5行:', lines.slice(0,5));
-    return {lines,blocks:[],raw:data};
+    return {lines,words,blocks:[],raw:data};
   }catch(e){
     console.warn('Tesseract 识别失败',e);
     return {lines:[],blocks:[],raw:null};
   }
+}
+function pdfSplitCreatePartyNameOcrCanvas(canvas){
+  // 名称位于回单上部左右两栏；只在整张 OCR 漏掉名称时使用这个小区域，
+  // 放大后能提高小字识别率，同时比再识别整张回单快得多。
+  const sx=Math.floor(canvas.width*0.03);
+  const sy=Math.floor(canvas.height*0.10);
+  const sw=Math.max(1,Math.floor(canvas.width*0.94));
+  const sh=Math.max(1,Math.floor(canvas.height*0.23));
+  const zoom=1.8;
+  const out=document.createElement('canvas');
+  out.width=Math.round(sw*zoom); out.height=Math.round(sh*zoom);
+  const ctx=out.getContext('2d',{alpha:false});
+  ctx.fillStyle='#fff'; ctx.fillRect(0,0,out.width,out.height);
+  ctx.drawImage(canvas,sx,sy,sw,sh,0,0,out.width,out.height);
+  return out;
 }
 
 
@@ -3692,18 +3741,22 @@ function pdfSplitDetectReceiptGapsFromImage(canvas, pageW, pageH, count){
   try{
     const ctx=canvas.getContext('2d',{willReadFrequently:true});
     const stripH=Math.max(2,Math.floor(pageH/500));
-    const sampleW=Math.max(2,Math.floor(pageW/200));
-    // 逐行扫描，计算每行的平均像素亮度（0=黑 255=白）
+    // 逐行扫描：白色空隙适合普通回单；中国银行扫描回单还带有贯穿整行的红色标题线，
+    // 后者比“最白的一行”稳定得多（单据正文里也常有大片白色）。
     const rowBright=[];
+    const redRows=[];
+    const cols=[0.08,0.2,0.5,0.8,0.92].map(p=>Math.floor(pageW*p));
     for(let y=0;y<pageH;y+=stripH){
-      // 采样几列取平均
       let sum=0;
-      const cols=[Math.floor(pageW*0.2),Math.floor(pageW*0.5),Math.floor(pageW*0.8)];
+      let redHits=0;
       for(const cx of cols){
         const img=ctx.getImageData(cx,Math.floor(y),1,1);
-        sum+=(img.data[0]+img.data[1]+img.data[2])/3;
+        const r=img.data[0],g=img.data[1],b=img.data[2];
+        sum+=(r+g+b)/3;
+        if(r>120&&r>g*1.22&&r>b*1.22)redHits++;
       }
       rowBright.push({y,bright:sum/cols.length});
+      if(redHits>=3)redRows.push(y);
     }
     // 扫描件回单之间通常有白色空隙（亮度高），回单区域有文字（亮度低）
     // 找 pageH/count 附近的亮度峰值作为分隔点
@@ -3716,6 +3769,16 @@ function pdfSplitDetectReceiptGapsFromImage(canvas, pageW, pageH, count){
         if(Math.abs(rb.y-targetY)<=searchRange&&rb.bright>bestBright){
           bestBright=rb.bright; bestY=rb.y;
         }
+      }
+      // BOC 的下一张回单标题下方有一条横向红线。裁剪点需要略早于它，
+      // 才能把下一张的行徽/标题一并保留，而不是留在上一张的页脚后面。
+      const nearbyRed=redRows.filter(y=>Math.abs(y-targetY)<=searchRange);
+      if(nearbyRed.length){
+        const redY=nearbyRed.reduce((best,y)=>Math.abs(y-targetY)<Math.abs(best-targetY)?y:best,nearbyRed[0]);
+        // 标题红线在下一张单据的顶部约 4.5% 处；留足前置空白，避免把下一张行徽带进上一张。
+        const headerTop=Math.max(0,redY-pageH*0.045);
+        gaps.push(headerTop);
+        continue;
       }
       // 只有明显的白色分隔（亮度>200）才信任
       if(bestBright>200)gaps.push(bestY);
@@ -3732,6 +3795,18 @@ function pdfSplitDetectReceiptGapsFromImage(canvas, pageW, pageH, count){
     }
   }catch(e){ console.warn('图像分隔检测失败',e); }
   return null;
+}
+function pdfSplitShouldKeepSingleScanReceipt(canvas, requestedCount){
+  if(requestedCount<2)return false;
+  const content=pdfSplitFindContentBox(canvas);
+  // 像“丽水.pdf”第三页：单据只占上半页，下面是整块空白。
+  // 此时不能把页脚红线误认为下一张回单的标题线。
+  return content.y+content.h<canvas.height*0.72;
+}
+function pdfSplitSingleScanReceiptCrop(canvas){
+  const content=pdfSplitFindContentBox(canvas);
+  const bottom=Math.min(canvas.height,Math.ceil(content.y+content.h+canvas.height*0.02));
+  return {x:0,y:0,w:canvas.width,h:Math.max(1,bottom),detected:true,imageSingle:true};
 }
 function pdfSplitPreprocessReceiptCanvas(src){
   const crop=pdfSplitFindContentBox(src);
@@ -3999,7 +4074,96 @@ function pdfSplitCleanPartyName(name){
     .replace(/[户名\s]+$/g,'')
     .replace(/[^\u4e00-\u9fa5A-Za-z0-9（）()·]/g,'')
     .trim();
-  return pdfSplitSafeFileName(s);
+  // 字段解析必须保留“空”语义；“未识别”只属于文件名/展示层，不能冒充真实户名。
+  return s.slice(0,80);
+}
+function pdfSplitExtractPairedPartyNames(lines){
+  // 中国银行等回单把“付款人名称”和“收款人名称”横向放在同一行。
+  // OCR 顺序常是“左侧整段 + 右侧整段”，不能再按普通候选词猜测。
+  const result={payer:'',payee:''};
+  const stopWords=['付款人开户行','收款人开户行','付款人账号','收款人账号','付款人帐号','收款人帐号','金额','用途','摘要','业务','附言','日期'];
+  const cleaned=(lines||[]).map(line=>pdfSplitNormalizeOcrText(line)
+    .replace(/\s+/g,'')
+    .replace(/付歌人|付欧人|付软人|付教人/g,'付款人')
+    .replace(/收蒜人|收获人|收区人|收鞭人|收歌人|收丈人/g,'收款人'));
+  for(let lineIndex=0;lineIndex<cleaned.length;lineIndex++){
+    const line=cleaned[lineIndex];
+    const payerAt=line.indexOf('付款人名称');
+    const payeeAt=line.indexOf('收款人名称');
+    if(payerAt>=0&&payeeAt>payerAt){
+      result.payer=result.payer||pdfSplitCleanPartyName(line.slice(payerAt+'付款人名称'.length,payeeAt));
+      let payeePart=line.slice(payeeAt+'收款人名称'.length);
+      let end=payeePart.length;
+      for(const word of stopWords){ const i=payeePart.indexOf(word); if(i>=0&&i<end)end=i; }
+      result.payee=result.payee||pdfSplitCleanPartyName(payeePart.slice(0,end));
+      // 长付款方名称在左右栏末尾换行时，续行通常只有 2-10 个字且没有字段标签。
+      const next=cleaned[lineIndex+1]||'';
+      if(next.length>=2&&next.length<=10&&!/(付款|收款|账号|开户|金额|日期|银行|用途|摘要|业务)/.test(next)){
+        const merged=pdfSplitCleanPartyName(result.payer+next);
+        if(merged.length>result.payer.length)result.payer=merged;
+      }
+    }else if(payerAt>=0){
+      let part=line.slice(payerAt+'付款人名称'.length);
+      let end=part.length;
+      for(const word of ['收款人名称',...stopWords]){ const i=part.indexOf(word); if(i>=0&&i<end)end=i; }
+      result.payer=result.payer||pdfSplitCleanPartyName(part.slice(0,end));
+    }else if(payeeAt>=0){
+      let part=line.slice(payeeAt+'收款人名称'.length);
+      let end=part.length;
+      for(const word of ['付款人名称',...stopWords]){ const i=part.indexOf(word); if(i>=0&&i<end)end=i; }
+      result.payee=result.payee||pdfSplitCleanPartyName(part.slice(0,end));
+    }
+  }
+  return result;
+}
+function pdfSplitExtractPartyNamesFromOcrWords(words, canvasW, canvasH){
+  // Tesseract 已正确识别出公司字，但有时把“付款人名称”标签拆错；
+  // 中国银行回单的名称固定在顶部左右两栏，因此以坐标取字，不再只依赖标签文字。
+  if(!Array.isArray(words)||!canvasW||!canvasH)return {payer:'',payee:''};
+  const candidateWords=words.filter(word=>{
+    const box=word?.bbox;
+    if(!box||!String(word.text||'').trim())return false;
+    const centerY=(box.y0+box.y1)/2;
+    return centerY>=canvasH*0.10&&centerY<=canvasH*0.30;
+  });
+  const rows=[];
+  candidateWords.slice().sort((a,b)=>a.bbox.y0-b.bbox.y0).forEach(word=>{
+    const centerY=(word.bbox.y0+word.bbox.y1)/2;
+    let row=rows.find(item=>Math.abs(item.y-centerY)<12);
+    if(!row){ row={y:centerY,words:[]}; rows.push(row); }
+    row.words.push(word);
+  });
+  rows.forEach(row=>{ row.words.sort((a,b)=>a.bbox.x0-b.bbox.x0); row.text=row.words.map(word=>word.text).join(''); });
+  rows.sort((a,b)=>a.y-b.y);
+  const nameRowIndex=rows.findIndex(row=>/名.*称|名称/.test(row.text));
+  if(nameRowIndex<0)return {payer:'',payee:''};
+  const nameRows=[rows[nameRowIndex]];
+  const nextRow=rows[nameRowIndex+1];
+  // 付款方长名称可能在下一行续写；只接紧邻的短行，不能误吃到开户行。
+  if(nextRow&&nextRow.y-rows[nameRowIndex].y<canvasH*0.06&&!/开户|账号|金额|日期|银行/.test(nextRow.text))nameRows.push(nextRow);
+  const nameWords=nameRows.flatMap(row=>row.words);
+  const cleanSide=(side)=>{
+    // OCR 同一行各词的 y 坐标会有数像素抖动，不能简单全局按 y 排序，
+    // 否则“连锁/市”等略高的字会被排到标签之前。
+    const rows=[];
+    side.slice().sort((a,b)=>a.bbox.y0-b.bbox.y0).forEach(word=>{
+      const centerY=(word.bbox.y0+word.bbox.y1)/2;
+      let row=rows.find(item=>Math.abs(item.y-centerY)<12);
+      if(!row){ row={y:centerY,words:[]}; rows.push(row); }
+      row.words.push(word);
+    });
+    const text=rows.sort((a,b)=>a.y-b.y)
+      .map(row=>row.words.sort((a,b)=>a.bbox.x0-b.bbox.x0).map(word=>word.text).join(''))
+      .join('').replace(/\s+/g,'')
+      .replace(/付歌人|付欧人|付软人|付教人/g,'付款人')
+      .replace(/收蒜人|收获人|收区人|收鞭人|收歌人|收丈人/g,'收款人');
+    const name=pdfSplitCleanPartyName(text);
+    return /公司|企业|店|厂|集团|中心|药房|医院|学校/.test(name)?name:'';
+  };
+  return {
+    payer:cleanSide(nameWords.filter(word=>word.bbox.x0<canvasW*0.50)),
+    payee:cleanSide(nameWords.filter(word=>word.bbox.x0>=canvasW*0.50))
+  };
 }
 function pdfSplitPickBetween(text, start, endWords){
   const s=text.indexOf(start);
@@ -4238,6 +4402,7 @@ function pdfSplitExtractReceiptFields(lines){
     });
   }
   const namesFromLabels=pdfSplitExtractNamesFromCompact(compact);
+  const pairedNames=pdfSplitExtractPairedPartyNames(correctedLines);
   // 名称续行检测：OCR 把长名字拆到下一行（如"付款人名称:四川查林...丽水型" + 下一行"苑药店"）
   // 下一行通常很短(2-8字)、无标签无数字、且紧跟在含"付款人名称:"或"收款人名称:"的行之后
   const payerConts=[];
@@ -4278,8 +4443,8 @@ function pdfSplitExtractReceiptFields(lines){
     }
   }
   // label行名称为优先，其次紧凑提取名，再次普通候选
-  const payerRaw=namesFromLabels[0]||priorityCandidates[0]||candidates[0]||'';
-  const payeeRaw=namesFromLabels[1]||(priorityCandidates[1]&&priorityCandidates[1]!==(namesFromLabels[0]||priorityCandidates[0]||candidates[0]||'')?priorityCandidates[1]:priorityCandidates.find((c,i)=>i>0&&c!==(namesFromLabels[0]||priorityCandidates[0]||candidates[0]||'')))||candidates.find((c,idx)=>idx>0&&c!==(namesFromLabels[0]||priorityCandidates[0]||candidates[0]||''))||candidates[1]||'';
+  const payerRaw=pairedNames.payer||namesFromLabels[0]||priorityCandidates[0]||candidates[0]||'';
+  const payeeRaw=pairedNames.payee||namesFromLabels[1]||(priorityCandidates[1]&&priorityCandidates[1]!==payerRaw?priorityCandidates[1]:priorityCandidates.find((c,i)=>i>0&&c!==payerRaw))||candidates.find((c,idx)=>idx>0&&c!==payerRaw)||candidates[1]||'';
   // 不管走哪条分支，都过一遍通用清洗：剥掉竖排标签残字（如"志"）、标签词、长账号数字——不写死任何公司名。
   let payer=pdfSplitCleanPartyName(payerRaw);
   let payee=pdfSplitCleanPartyName(payeeRaw);
@@ -4368,8 +4533,46 @@ function pdfSplitExtractNamesFromOcrText(lines){
   return [...new Set(candidates)].slice(0,6);
 }
 
+function pdfSplitReceiptFieldIsMissing(value){
+  if(Array.isArray(value))return value.length===0;
+  const normalized=String(value||'').replace(/\s+/g,'').trim();
+  return !normalized||/^(未识别|未知|N\/?A|-+)$/.test(normalized);
+}
+function pdfSplitRequiredReceiptFields(mode,template){
+  const fixed={amount:['amount'],payer:['payer'],payee:['payee'],payee_amount:['payee','amount']};
+  if(fixed[mode])return fixed[mode].slice();
+  const tags={金额:'amount',付款人:'payer',收款人:'payee',日期:'date',流水号:'serial'};
+  const fields=[];
+  String(template||'').replace(/\{([^}]+)\}/g,(_,tag)=>{ const key=tags[tag]; if(key&&!fields.includes(key))fields.push(key); return _; });
+  return fields;
+}
+function pdfSplitMissingReceiptFields(fields,mode,template){
+  return pdfSplitRequiredReceiptFields(mode,template).filter(key=>{
+    return pdfSplitReceiptFieldIsMissing(fields?.[key]);
+  });
+}
+function pdfSplitMergeMissingReceiptFields(primary,supplement){
+  const out=Object.assign({},primary||{});
+  Object.keys(supplement||{}).forEach(key=>{
+    const current=out[key],incoming=supplement[key];
+    const empty=pdfSplitReceiptFieldIsMissing(current);
+    const usable=!pdfSplitReceiptFieldIsMissing(incoming);
+    if(empty&&usable)out[key]=incoming;
+  });
+  return out;
+}
+function pdfSplitPreferCoordinatePartyNames(fields, coordinateNames){
+  const out=Object.assign({},fields||{});
+  // 左右栏坐标来自固定名称区域，可信度高于整行 OCR 的候选词猜测；
+  // 仅覆盖双方名称，金额、日期、流水等仍沿用原始解析结果。
+  ['payer','payee'].forEach(key=>{
+    if(!pdfSplitReceiptFieldIsMissing(coordinateNames?.[key]))out[key]=coordinateNames[key];
+  });
+  return out;
+}
 async function pdfSplitOcrReceiptCanvas(canvas, fallbackLines, layoutFields){
   let lines=fallbackLines||[];
+  const partyOcrTrace=[];
   const guessed=pdfSplitExtractReceiptFields(lines);
   let fields={
     amount: layoutFields?.amount || guessed.amount || '',
@@ -4384,44 +4587,47 @@ async function pdfSplitOcrReceiptCanvas(canvas, fallbackLines, layoutFields){
   };
   fields.amountWarning=pdfSplitCleanAmountWarning(fields.amount,fields.amountWarning);
   const needsOcr=layoutFields&&layoutFields.crb
-    ? (!fields.amount||!fields.payer)
-    : (!fields.amount||!fields.payer||!fields.payee||lines.join('').length<12);
-  let ocrLines=[];
-  let ocrSource='';
+    ? (pdfSplitReceiptFieldIsMissing(fields.amount)||pdfSplitReceiptFieldIsMissing(fields.payer))
+    : (pdfSplitReceiptFieldIsMissing(fields.amount)||pdfSplitReceiptFieldIsMissing(fields.payer)||pdfSplitReceiptFieldIsMissing(fields.payee)||lines.join('').length<12);
   if(needsOcr){
-    // 扫描件直接用 Tesseract.js 识别
     try{
-      const tResult=await pdfSplitRunTesseractOcr(canvas);
-      if(tResult.lines?.length){ ocrLines=tResult.lines; ocrSource='tesseract'; }
-    }catch(e){ console.warn('Tesseract 识别失败',e); }
+      const tess=await pdfSplitRunTesseractOcr(canvas);
+      if(tess.lines?.length){
+        lines=lines.concat(tess.lines);
+        const ocrFields=pdfSplitExtractReceiptFields(lines);
+        fields=pdfSplitMergeMissingReceiptFields(fields,ocrFields);
+        const wordNames=pdfSplitExtractPartyNamesFromOcrWords(tess.words,canvas.width,canvas.height);
+        fields=pdfSplitPreferCoordinatePartyNames(fields,wordNames);
+        partyOcrTrace.push(`首轮词${tess.words?.length||0}，左栏${wordNames.payer?'命中':'未命中'}，右栏${wordNames.payee?'命中':'未命中'}`);
+        fields.rawText=[fields.rawText,ocrFields.rawText].filter(Boolean).join('\n');
+        if(pdfSplitReceiptFieldIsMissing(fields.payer)||pdfSplitReceiptFieldIsMissing(fields.payee)){
+          const names=pdfSplitExtractNamesFromOcrText(tess.lines);
+          fields=pdfSplitMergeMissingReceiptFields(fields,{payer:names[0]||'',payee:names[1]||''});
+        }
+        // 整张扫描回单能认出金额却漏掉名称时，只放大顶部名称栏再识别一次。
+        if(pdfSplitReceiptFieldIsMissing(fields.payer)||pdfSplitReceiptFieldIsMissing(fields.payee)){
+          const focusedCanvas=pdfSplitCreatePartyNameOcrCanvas(canvas);
+          const focused=await pdfSplitRunTesseractOcr(focusedCanvas);
+          partyOcrTrace.push(`名称区词${focused.words?.length||0}，文本行${focused.lines?.length||0}`);
+          if(focused.lines?.length){
+            const focusedFields=pdfSplitExtractReceiptFields(focused.lines);
+            const focusedNames=pdfSplitExtractNamesFromOcrText(focused.lines);
+            fields=pdfSplitMergeMissingReceiptFields(fields,{
+              payer:focusedFields.payer||focusedNames[0]||'',
+              payee:focusedFields.payee||focusedNames[1]||''
+            });
+            fields.rawText=[fields.rawText,focused.lines.join('\n')].filter(Boolean).join('\n');
+          }
+        }
+        fields.ocrSource='tesseract';
+        fields.amountWarning=(fields.amountWarning?fields.amountWarning+'；':'')+'扫描件/OCR识别结果可能存在误差，请核对';
+      }
+    }catch(e){ console.warn('Tesseract 回单识别失败',e); }
+  }else{
+    fields.ocrSource='文字层';
   }
-  if(ocrLines.length){
-    lines=lines.concat(ocrLines);
-    const ocrFields=pdfSplitExtractReceiptFields(lines);
-    fields={
-      amount: fields.amount || ocrFields.amount || '',
-      amountWarning: fields.amountWarning || ocrFields.amountWarning || '',
-      amountSource: fields.amountSource || ocrFields.amountSource || '',
-      payer: fields.payer || ocrFields.payer || '',
-      payee: fields.payee || ocrFields.payee || '',
-      date: fields.date || ocrFields.date || '',
-      serial: fields.serial || ocrFields.serial || '',
-      accounts: fields.accounts?.length ? fields.accounts : (ocrFields.accounts || []),
-      rawText: [fields.rawText, ocrFields.rawText].filter(Boolean).join('\n')
-    };
-    // Tesseract 专用补充：当常规提取找不到人名时，用 OCR 文本启发式提取
-    if((!fields.payer||!fields.payee)&&ocrSource==='tesseract'){
-      const ocrNames=pdfSplitExtractNamesFromOcrText(ocrLines);
-      if(!fields.payer&&ocrNames.length>=1)fields.payer=ocrNames[0];
-      if(!fields.payee&&ocrNames.length>=2)fields.payee=ocrNames[1];
-      if(!fields.payer&&ocrNames.length>=1)fields.payer=ocrNames[0];
-    }
-    fields.amountWarning=(fields.amountWarning?fields.amountWarning+'；':'')+'扫描件/OCR识别结果可能存在误差，请核对金额';
-    fields.amountWarning=pdfSplitCleanAmountWarning(fields.amount,fields.amountWarning);
-  }else if(needsOcr){
-    if(!fields.amount && lines.join('').length<12){
-      fields.amountWarning=(fields.amountWarning?fields.amountWarning+'；':'')+'当前PDF可能是扫描件，OCR未成功，金额无法自动识别，请手动核对';
-    }
+  if(pdfSplitReceiptFieldIsMissing(fields.payer)||pdfSplitReceiptFieldIsMissing(fields.payee)){
+    fields.partyOcrDebug=partyOcrTrace.join('；')||(needsOcr?'OCR未返回可用名称数据':'未触发 OCR');
   }
   fields.amountWarning=pdfSplitCleanAmountWarning(fields.amount,fields.amountWarning);
   return fields;
@@ -4625,9 +4831,9 @@ async function pdfSplitExecute(){
 
     for(const pi of pageNums){
       const pn=pi+1;
-      // Render page to 300DPI-equivalent canvas using PDF.js. PDF point is 1/72 inch.
+      // 恢复 PaddleOCR 前经回单验证的渲染比例，避免大图拖慢浏览器 OCR。
       const jsPage=await pdfSplitJsDoc.getPage(pn);
-      const scale=300/72;
+      const scale=2.5;
       const vp=jsPage.getViewport({scale});
       const textContent=await jsPage.getTextContent().catch(()=>({items:[]}));
       const canvas=document.createElement('canvas');
@@ -4638,10 +4844,15 @@ async function pdfSplitExecute(){
       let receiptCrops=pdfSplitReceiptCropsForPage(pageTextItems,canvas.width,canvas.height,manualCount,dir);
       // 扫描件/图片型 PDF 文字层为空，用图像分析找回单之间的白色分隔带
       if(pageTextItems.length===0&&manualCount>1&&dir==='vertical'){
-        const imageCrops=pdfSplitDetectReceiptGapsFromImage(canvas,canvas.width,canvas.height,manualCount);
-        if(imageCrops&&imageCrops.length===manualCount){
+        if(pdfSplitShouldKeepSingleScanReceipt(canvas,manualCount)){
+          receiptCrops=[pdfSplitSingleScanReceiptCrop(canvas)];
+          console.log('[回单裁剪] 页面只有一张扫描回单，跳过固定二等分');
+        }else{
+          const imageCrops=pdfSplitDetectReceiptGapsFromImage(canvas,canvas.width,canvas.height,manualCount);
+          if(imageCrops&&imageCrops.length===manualCount){
           receiptCrops=imageCrops;
           console.log('[回单裁剪] 使用图像分隔检测，找到',imageCrops.length,'张回单');
+          }
         }
       }
 
@@ -4731,7 +4942,9 @@ function pdfSplitRenderResults(mode){
       r.fields?.serial?`流水：${esc(r.fields.serial)}`:'',
       r.fields?.accounts?.length?`账号：${esc(r.fields.accounts.join(' / '))}`:''
     ].filter(Boolean).join('<br>');
-    const meta=mode==='receipt'&&r.fields?`<div style="font-size:10px;color:var(--gray-500);line-height:1.35;margin-top:2px;text-align:left;">金额：${esc(r.fields.amount||'未识别')}${warn}<br>付款：${esc(r.fields.payer||'未识别')}<br>收款：${esc(r.fields.payee||'未识别')}${extra?'<br>'+extra:''}</div>`:'';
+    const source=r.fields?.ocrSource?`识别：${r.fields.ocrSource==='tesseract'?'Tesseract（请核对）':'文字层'}`:'';
+    const partyDebug=r.fields?.partyOcrDebug?`<br><span style="color:var(--gray-500);">名称诊断：${esc(r.fields.partyOcrDebug)}</span>`:'';
+    const meta=mode==='receipt'&&r.fields?`<div style="font-size:10px;color:var(--gray-500);line-height:1.35;margin-top:2px;text-align:left;">金额：${esc(r.fields.amount||'未识别')}${warn}<br>付款：${esc(r.fields.payer||'未识别')}<br>收款：${esc(r.fields.payee||'未识别')}${extra?'<br>'+extra:''}${source?'<br>'+esc(source):''}${partyDebug}</div>`:'';
     // 回单模式：文件名做成可编辑框，认错了当场改，改完直接导出（比死磕自动识别稳）。
     const nameField=mode==='receipt'
       ? `<input type="text" value="${esc(r.baseName||label)}" onchange="pdfSplitSetReceiptName(${i}, this.value)" title="文件名——识别错了直接在这里改" style="width:110px;font-size:11px;text-align:center;margin-top:4px;padding:3px 4px;border:1px solid var(--gray-300);border-radius:5px;color:var(--gray-700);outline:none;background:var(--card-bg,#fff);">`
@@ -4748,7 +4961,11 @@ function pdfSplitRenderResults(mode){
       ${meta}
     </div>`;
   });
-  document.getElementById('pdfSplitPreviewThumbs').innerHTML=thumbs;
+  const previewThumbs=document.getElementById('pdfSplitPreviewThumbs');
+  previewThumbs.innerHTML=thumbs;
+  // 回单卡片包含金额、双方名称、流水和 OCR 诊断；不能被固定 300px 高度裁掉。
+  previewThumbs.style.maxHeight=mode==='receipt'?'none':'300px';
+  previewThumbs.style.overflowY=mode==='receipt'?'visible':'auto';
   document.getElementById('pdfSplitResultStats').innerHTML=`<div class="stat-item"><div class="stat-value">${pdfSplitResults.length}</div><div class="stat-label">拆分文件数</div></div>`;
   document.querySelector('input[name="pdfSplitExportFormat"][value="pdf"]').checked=true;
   pdfSplitUpdateExportFormat();
