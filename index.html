@@ -4074,7 +4074,8 @@ function pdfSplitCleanPartyName(name){
     .replace(/[户名\s]+$/g,'')
     .replace(/[^\u4e00-\u9fa5A-Za-z0-9（）()·]/g,'')
     .trim();
-  return pdfSplitSafeFileName(s);
+  // 字段解析必须保留“空”语义；“未识别”只属于文件名/展示层，不能冒充真实户名。
+  return s.slice(0,80);
 }
 function pdfSplitExtractPairedPartyNames(lines){
   // 中国银行等回单把“付款人名称”和“收款人名称”横向放在同一行。
@@ -4532,6 +4533,11 @@ function pdfSplitExtractNamesFromOcrText(lines){
   return [...new Set(candidates)].slice(0,6);
 }
 
+function pdfSplitReceiptFieldIsMissing(value){
+  if(Array.isArray(value))return value.length===0;
+  const normalized=String(value||'').replace(/\s+/g,'').trim();
+  return !normalized||/^(未识别|未知|N\/?A|-+)$/.test(normalized);
+}
 function pdfSplitRequiredReceiptFields(mode,template){
   const fixed={amount:['amount'],payer:['payer'],payee:['payee'],payee_amount:['payee','amount']};
   if(fixed[mode])return fixed[mode].slice();
@@ -4542,17 +4548,25 @@ function pdfSplitRequiredReceiptFields(mode,template){
 }
 function pdfSplitMissingReceiptFields(fields,mode,template){
   return pdfSplitRequiredReceiptFields(mode,template).filter(key=>{
-    const value=fields?.[key];
-    return Array.isArray(value)?value.length===0:String(value||'').trim()==='';
+    return pdfSplitReceiptFieldIsMissing(fields?.[key]);
   });
 }
 function pdfSplitMergeMissingReceiptFields(primary,supplement){
   const out=Object.assign({},primary||{});
   Object.keys(supplement||{}).forEach(key=>{
     const current=out[key],incoming=supplement[key];
-    const empty=Array.isArray(current)?current.length===0:String(current||'').trim()==='';
-    const usable=Array.isArray(incoming)?incoming.length>0:String(incoming||'').trim()!=='';
+    const empty=pdfSplitReceiptFieldIsMissing(current);
+    const usable=!pdfSplitReceiptFieldIsMissing(incoming);
     if(empty&&usable)out[key]=incoming;
+  });
+  return out;
+}
+function pdfSplitPreferCoordinatePartyNames(fields, coordinateNames){
+  const out=Object.assign({},fields||{});
+  // 左右栏坐标来自固定名称区域，可信度高于整行 OCR 的候选词猜测；
+  // 仅覆盖双方名称，金额、日期、流水等仍沿用原始解析结果。
+  ['payer','payee'].forEach(key=>{
+    if(!pdfSplitReceiptFieldIsMissing(coordinateNames?.[key]))out[key]=coordinateNames[key];
   });
   return out;
 }
@@ -4573,8 +4587,8 @@ async function pdfSplitOcrReceiptCanvas(canvas, fallbackLines, layoutFields){
   };
   fields.amountWarning=pdfSplitCleanAmountWarning(fields.amount,fields.amountWarning);
   const needsOcr=layoutFields&&layoutFields.crb
-    ? (!fields.amount||!fields.payer)
-    : (!fields.amount||!fields.payer||!fields.payee||lines.join('').length<12);
+    ? (pdfSplitReceiptFieldIsMissing(fields.amount)||pdfSplitReceiptFieldIsMissing(fields.payer))
+    : (pdfSplitReceiptFieldIsMissing(fields.amount)||pdfSplitReceiptFieldIsMissing(fields.payer)||pdfSplitReceiptFieldIsMissing(fields.payee)||lines.join('').length<12);
   if(needsOcr){
     try{
       const tess=await pdfSplitRunTesseractOcr(canvas);
@@ -4583,15 +4597,15 @@ async function pdfSplitOcrReceiptCanvas(canvas, fallbackLines, layoutFields){
         const ocrFields=pdfSplitExtractReceiptFields(lines);
         fields=pdfSplitMergeMissingReceiptFields(fields,ocrFields);
         const wordNames=pdfSplitExtractPartyNamesFromOcrWords(tess.words,canvas.width,canvas.height);
-        fields=pdfSplitMergeMissingReceiptFields(fields,wordNames);
+        fields=pdfSplitPreferCoordinatePartyNames(fields,wordNames);
         partyOcrTrace.push(`首轮词${tess.words?.length||0}，左栏${wordNames.payer?'命中':'未命中'}，右栏${wordNames.payee?'命中':'未命中'}`);
         fields.rawText=[fields.rawText,ocrFields.rawText].filter(Boolean).join('\n');
-        if(!fields.payer||!fields.payee){
+        if(pdfSplitReceiptFieldIsMissing(fields.payer)||pdfSplitReceiptFieldIsMissing(fields.payee)){
           const names=pdfSplitExtractNamesFromOcrText(tess.lines);
           fields=pdfSplitMergeMissingReceiptFields(fields,{payer:names[0]||'',payee:names[1]||''});
         }
         // 整张扫描回单能认出金额却漏掉名称时，只放大顶部名称栏再识别一次。
-        if(!fields.payer||!fields.payee){
+        if(pdfSplitReceiptFieldIsMissing(fields.payer)||pdfSplitReceiptFieldIsMissing(fields.payee)){
           const focusedCanvas=pdfSplitCreatePartyNameOcrCanvas(canvas);
           const focused=await pdfSplitRunTesseractOcr(focusedCanvas);
           partyOcrTrace.push(`名称区词${focused.words?.length||0}，文本行${focused.lines?.length||0}`);
@@ -4612,7 +4626,7 @@ async function pdfSplitOcrReceiptCanvas(canvas, fallbackLines, layoutFields){
   }else{
     fields.ocrSource='文字层';
   }
-  if(!fields.payer||!fields.payee){
+  if(pdfSplitReceiptFieldIsMissing(fields.payer)||pdfSplitReceiptFieldIsMissing(fields.payee)){
     fields.partyOcrDebug=partyOcrTrace.join('；')||(needsOcr?'OCR未返回可用名称数据':'未触发 OCR');
   }
   fields.amountWarning=pdfSplitCleanAmountWarning(fields.amount,fields.amountWarning);

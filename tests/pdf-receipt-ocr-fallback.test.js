@@ -13,14 +13,14 @@ function source(name = 'index.html') {
 }
 
 function loadPureHelpers(html) {
-  const start = html.indexOf('function pdfSplitRequiredReceiptFields(');
+  const start = html.indexOf('function pdfSplitReceiptFieldIsMissing(');
   const end = html.indexOf('async function pdfSplitOcrReceiptCanvas(', start);
-  assert.notEqual(start, -1, 'pure OCR helpers should exist');
+  assert.notEqual(start, -1, 'receipt field helpers should exist');
   assert.ok(end > start, 'pure OCR helper block should end before the coordinator');
   const snippets = html.slice(start, end);
   const context = {};
   vm.createContext(context);
-  vm.runInContext(`${snippets}\nthis.api={pdfSplitRequiredReceiptFields,pdfSplitMissingReceiptFields,pdfSplitMergeMissingReceiptFields};`, context);
+  vm.runInContext(`${snippets}\nthis.api={pdfSplitRequiredReceiptFields,pdfSplitMissingReceiptFields,pdfSplitMergeMissingReceiptFields,pdfSplitPreferCoordinatePartyNames};`, context);
   return context.api;
 }
 
@@ -41,15 +41,18 @@ function loadPartyParser(html) {
 }
 
 function loadWordPartyParser(html) {
+  const safeStart = html.indexOf('function pdfSplitSafeFileName(');
+  const safeEnd = html.indexOf('\nfunction pdfSplitNormalizeOcrText(', safeStart);
   const cleanStart = html.indexOf('function pdfSplitCleanPartyName(');
   const cleanEnd = html.indexOf('\nfunction pdfSplitPickBetween(', cleanStart);
   const parserStart = html.indexOf('function pdfSplitExtractPartyNamesFromOcrWords(');
   const parserEnd = html.indexOf('\nfunction pdfSplitPickBetween(', parserStart);
+  assert.ok(safeStart >= 0 && safeEnd > safeStart, 'file-name helper should exist');
   assert.ok(cleanStart >= 0 && cleanEnd > cleanStart, 'party-name cleaner should exist');
   assert.ok(parserStart >= 0 && parserEnd > parserStart, 'word-coordinate party parser should exist');
-  const context = { pdfSplitSafeFileName: value => String(value || '') };
+  const context = {};
   vm.createContext(context);
-  vm.runInContext(`${html.slice(cleanStart, cleanEnd)}\n${html.slice(parserStart, parserEnd)}\nthis.api={pdfSplitExtractPartyNamesFromOcrWords};`, context);
+  vm.runInContext(`${html.slice(safeStart, safeEnd)}\n${html.slice(cleanStart, cleanEnd)}\n${html.slice(parserStart, parserEnd)}\nthis.api={pdfSplitCleanPartyName,pdfSplitExtractPartyNamesFromOcrWords};`, context);
   return context.api;
 }
 
@@ -83,6 +86,23 @@ test('missing fields and merge only fill empty primary values', () => {
   assert.equal(merged.payee, '补充收款人');
   assert.equal(merged.amount, '12.34元');
   assert.deepEqual(Array.from(merged.accounts), ['12345678']);
+  const recovered = merge(
+    { payer: '未识别', payee: '未识别' },
+    { payer: '付款方公司', payee: '收款方公司' }
+  );
+  assert.equal(recovered.payer, '付款方公司');
+  assert.equal(recovered.payee, '收款方公司');
+});
+
+test('left-right OCR coordinates override a low-confidence merged party line', () => {
+  const { pdfSplitPreferCoordinatePartyNames: prefer } = loadPureHelpers(source());
+  const fields = prefer(
+    { payer: '四川杏林医药连锁收款人名称四川久远银海', payee: '收文人和', amount: '3400.00元' },
+    { payer: '四川杏林医药连锁有限责任公司达州市丽水翠苑药店', payee: '四川久远银海软件股份有限公司' }
+  );
+  assert.equal(fields.payer, '四川杏林医药连锁有限责任公司达州市丽水翠苑药店');
+  assert.equal(fields.payee, '四川久远银海软件股份有限公司');
+  assert.equal(fields.amount, '3400.00元');
 });
 
 test('canonical entry uses the pre-Paddle Tesseract receipt path', () => {
@@ -135,6 +155,11 @@ test('actual Lishui OCR word coordinates recover both party names even if label 
   const fields = parse(words, 1489, 1005);
   assert.match(fields.payer, /^四川杏林医药连锁有限责任公司达州市丽水到苑药店$/, 'left name from OCR coordinates');
   assert.match(fields.payee, /^四川入远银海软件股份有限公司$/, 'right name from OCR coordinates');
+});
+
+test('an empty party OCR result stays empty instead of becoming a filename placeholder', () => {
+  const { pdfSplitCleanPartyName: clean } = loadWordPartyParser(source());
+  assert.equal(clean(''), '');
 });
 
 test('Tesseract v5 nested blocks are flattened into OCR words', () => {
