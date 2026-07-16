@@ -2345,7 +2345,7 @@ async function multiReadWorkbookFile(f, keepFmt){
   const relPath = f.webkitRelativePath || f.name;
   const buf=await multiWithTimeout(
     f.arrayBuffer(),
-    15000,
+    60000,
     '文件读取超时。请确认文件已下载到本机，并关闭 Excel 后重试。'
   );
   await multiYield();
@@ -3771,8 +3771,8 @@ function pdfSplitAllTextItems(textContent, viewport){
 }
 // 找出页面上每张回单的"标题行"纵坐标（标题=显示"客户回单"、"付款回单"、"付费回单"或"网上银行电子回单"的那一行）。
 // 每张回单都从它自己的标题行开始，按标题切比按页高均分稳——回单在页面上常不是均匀排的。
-// 只认强标题词，避开印章里的"…电子回单专用章"等；相距很近的去重。
-function pdfSplitReceiptTitleRows(pageItems, pageH){
+// 只认强标题词，避开印章里的"…电子回单专用章"等；避开正文里的"电子回单号"等；相距很近的去重。
+function pdfSplitReceiptTitleRows(pageItems, pageH, count){
   const rowObjs=[];
   // 行合并阈值：约 17px（3500px 页面），避免合并上一张回单的底部文字
   const mergeThresh=Math.max(8,pageH*0.005);
@@ -3790,22 +3790,28 @@ function pdfSplitReceiptTitleRows(pageItems, pageH){
   const rows=rowObjs
     .map(r=>({y:r.y,top:r.top,bottom:r.bottom,text:r.items.map(it=>it.text).join('').replace(/\s+/g,'')}))
     .filter(r=>{
-      if(/客户回单/.test(r.text))return true;
-      if(/付款回单/.test(r.text))return true;
-      if(/付费回单/.test(r.text))return true;
-      if(/网上银行电子回单/.test(r.text)&&!/专用章|印章/.test(r.text))return true;
-      if(/国内支付业务/.test(r.text))return true;
-      if(/电子回单/.test(r.text)&&!/专用章|印章/.test(r.text))return true;
+      const t=r.text;
+      if(/客户回单/.test(t))return true;
+      if(/付款回单/.test(t))return true;
+      if(/付费回单/.test(t))return true;
+      if(/网上银行电子回单/.test(t)&&!/专用章|印章/.test(t))return true;
+      if(/国内支付业务/.test(t))return true;
+      if(/电子回单/.test(t)&&!/专用章|印章|号码|编号|验证码|校验码|流水号|交易号|单号/.test(t)){
+        // 标题行通常较短，排除拼接了正文的长行
+        if(t.length>22)return false;
+        return true;
+      }
       return false;
     })
     .sort((a,b)=>a.y-b.y);
-  // 去重：标题行之间至少间隔页高 6%（约 210px）
+  // 去重：标题行之间至少间隔约一个等分带的 30%
+  const minGap=Math.max(50,pageH/Math.max(1,count||1)*0.30);
   const out=[];
-  rows.forEach(r=>{ if(!out.length||r.y-out[out.length-1].y>pageH*0.06) out.push(r); });
+  rows.forEach(r=>{ if(!out.length||r.y-out[out.length-1].y>minGap) out.push(r); });
   return out;
 }
-function pdfSplitReceiptTitleYs(pageItems, pageH){
-  return pdfSplitReceiptTitleRows(pageItems,pageH).map(r=>r.y);
+function pdfSplitReceiptTitleYs(pageItems, pageH, count){
+  return pdfSplitReceiptTitleRows(pageItems,pageH,count).map(r=>r.y);
 }
 function pdfSplitAdaptiveReceiptCrop(pageItems, pageW, pageH, idx, count, dir){
   let band;
@@ -3817,7 +3823,7 @@ function pdfSplitAdaptiveReceiptCrop(pageItems, pageW, pageH, idx, count, dir){
     const h=pageH/count;
     band={x:0,y:idx*h,w:pageW,h};
     // 优先按标题行定位：第 idx 张回单 = 从第 idx 个标题到下一个标题（最后一张到页底）
-    tYs=pdfSplitReceiptTitleYs(pageItems,pageH);
+    tYs=pdfSplitReceiptTitleYs(pageItems,pageH,count);
     if(tYs.length>=count){
       const top=Math.max(0,tYs[idx]-pageH*0.012);
       const bot=idx<count-1?tYs[idx+1]-pageH*0.006:pageH;
@@ -3887,14 +3893,24 @@ function pdfSplitReceiptCropsForPage(pageItems, pageW, pageH, manualCount, dir){
   // 全部使用标题行检测定位（比等分精确，不会多裁少裁）
   // 标题行识别"客户回单/付款回单/付费回单/电子回单"等关键词
   if(dir==='vertical'){
-    const titleRows=pdfSplitReceiptTitleRows(pageItems,pageH);
+    let titleRows=pdfSplitReceiptTitleRows(pageItems,pageH,count);
+    // 如果检测到多于 count 个标题行，按等分带只保留最靠上的一个
+    if(titleRows.length>count){
+      const bandH=pageH/count;
+      const best=new Map();
+      titleRows.forEach(r=>{
+        const band=Math.min(count-1,Math.floor(r.y/bandH));
+        if(!best.has(band)||r.y<best.get(band).y)best.set(band,r);
+      });
+      titleRows=Array.from(best.values()).sort((a,b)=>a.y-b.y);
+    }
     if(titleRows.length>=count){
       const crops=titleRows.map((row,idx)=>{
-        // 顶部：用标题行的 top，留极小边距（8px），保证不裁到标题
-        const top=Math.max(0,row.top-pageH*0.002);
-        // 底部：到下一张回单的标题行 top（或页底），留极小边距避免带进下一张
+        // 顶部：用标题行的 top，留小边距避免裁到标题
+        const top=Math.max(0,row.top-pageH*0.005);
+        // 底部：到下一张回单的标题行 top（或页底），留安全间距避免带进下一张
         const nextRow=titleRows[idx+1];
-        const bot=nextRow?Math.max(top+pageH*0.05,nextRow.top-pageH*0.002):pageH;
+        const bot=nextRow?Math.max(top+pageH*0.05,nextRow.top-pageH*0.02):pageH;
         return {x:0,y:top,w:pageW,h:Math.min(pageH,bot)-top, detected:true};
       }).filter(c=>c.h>pageH*0.05);
       if(crops.length===count) return crops;
@@ -5253,8 +5269,12 @@ function pdfSplitUpdateCropAdjustLines(){
   const ratio=displayedH/__cropAdjustImgH;
   const topLine=document.getElementById('cropAdjustTopLine');
   const bottomLine=document.getElementById('cropAdjustBottomLine');
-  topLine.style.top=(__cropAdjustNewY*ratio)+'px';
-  bottomLine.style.bottom=(((__cropAdjustImgH-__cropAdjustNewY-__cropAdjustNewH))*ratio)+'px';
+  // 图片在wrap中垂直居中，计算顶部偏移让线条准确定位在图片上
+  const wrapH=wrap.clientHeight;
+  const imgOffsetTop=(wrapH-displayedH)/2;
+  topLine.style.top=(imgOffsetTop+__cropAdjustNewY*ratio)+'px';
+  bottomLine.style.bottom='auto';
+  bottomLine.style.top=(imgOffsetTop+(__cropAdjustNewY+__cropAdjustNewH)*ratio-3)+'px';
 }
 function pdfSplitBindCropAdjustDrag(){
   const wrap=document.getElementById('cropAdjustCanvasWrap');
