@@ -5193,15 +5193,21 @@ async function pdfSplitExecute(){
   pdfSplitResults=[];
   const btn=document.getElementById('pdfSplitBtn');
   const oldBtnText=btn?btn.textContent:'';
-  if(btn){ btn.disabled=true; btn.textContent=mode==='receipt'?'正在拆分并识别…':'正在拆分…'; }
+  if(btn){ btn.disabled=true; btn.textContent=(mode==='receipt'||mode==='template')?'正在拆分并识别…':'正在拆分…'; }
 
   try{
-  if(mode==='receipt'){
-    // ===== 回单模式：渲染页面→裁剪→生成单张PDF =====
-    if(!pdfSplitJsDoc){ showToast('PDF.js 未加载，无法执行回单模式','error'); return; }
-    const countSel=document.getElementById('pdfSplitReceiptCount');
-    const manualCount=countSel.value==='custom'?parseInt(document.getElementById('pdfSplitReceiptCountCustom').value)||3:parseInt(countSel.value)||1;
-    const dir=document.getElementById('pdfSplitReceiptDir').value; // horizontal|vertical
+  if(mode==='receipt'||mode==='template'){
+    // ===== 回单/模板模式：渲染页面→裁剪→生成单张PDF =====
+    if(!pdfSplitJsDoc){ showToast('PDF.js 未加载，无法执行','error'); return; }
+    const isTemplateMode=mode==='template';
+    const countSel=isTemplateMode?null:document.getElementById('pdfSplitReceiptCount');
+    const manualCount=isTemplateMode
+      ? parseInt(document.getElementById('pdfSplitTemplateCount').value)||2
+      : (countSel.value==='custom'?parseInt(document.getElementById('pdfSplitReceiptCountCustom').value)||3:parseInt(countSel.value)||1);
+    const dir=isTemplateMode
+      ? document.getElementById('pdfSplitTemplateDir').value
+      : document.getElementById('pdfSplitReceiptDir').value;
+    if(isTemplateMode&&!__tplTemplate){ showToast('请先框选模板区域','error'); if(btn){btn.disabled=false;btn.textContent=oldBtnText;} return; }
     let receiptGlobalIdx=0;
 
     for(const pi of pageNums){
@@ -5216,9 +5222,11 @@ async function pdfSplitExecute(){
       const ctx=canvas.getContext('2d');
       await jsPage.render({canvasContext:ctx,viewport:vp}).promise;
       const pageTextItems=pdfSplitAllTextItems(textContent,vp);
-      let receiptCrops=pdfSplitReceiptCropsForPage(pageTextItems,canvas.width,canvas.height,manualCount,dir);
+      let receiptCrops=isTemplateMode
+        ? pdfSplitTemplateCropsForPage(canvas.width,canvas.height)
+        : pdfSplitReceiptCropsForPage(pageTextItems,canvas.width,canvas.height,manualCount,dir);
       // 扫描件/图片型 PDF 文字层为空，用图像分析找回单之间的白色分隔带
-      if(pageTextItems.length===0&&manualCount>1&&dir==='vertical'){
+      if(!isTemplateMode&&pageTextItems.length===0&&manualCount>1&&dir==='vertical'){
         if(pdfSplitShouldKeepSingleScanReceipt(canvas,manualCount)){
           receiptCrops=[pdfSplitSingleScanReceiptCrop(canvas)];
           console.log('[回单裁剪] 页面只有一张扫描回单，跳过固定二等分');
@@ -5389,6 +5397,173 @@ function pdfSplitDataUrlToBytes(dataUrl){
 }
 
 // ===== 回单裁剪调整 =====
+// ==========================================
+// PDF SPLIT - TEMPLATE SELECT MODE
+// ==========================================
+let __tplSelCanvasH=0, __tplSelCanvasW=0, __tplSelRect=null; // {x,y,w,h} in canvas coords
+let __tplSelDragging=false, __tplSelStartX=0, __tplSelStartY=0;
+let __tplTemplate=null; // {rx,ry,rw,rh} normalized 0-1 ratios
+let __tplSelCleanup=null;
+
+function pdfSplitOpenTemplateSelect(){
+  if(!pdfSplitJsDoc){ showToast('请先上传PDF文件','error'); return; }
+  __tplSelRect=null;
+  document.getElementById('templateConfirmBtn').disabled=true;
+  document.getElementById('templateSelectInfo').textContent='在图片上拖动鼠标框选第一个回单区域，将按此模板等分切割所有页面';
+  const modal=document.getElementById('templateSelectModal');
+  modal.classList.add('show');
+
+  const canvas=document.getElementById('templateSelectCanvas');
+  const ctx=canvas.getContext('2d');
+  pdfSplitJsDoc.getPage(1).then(page=>{
+    const scale=2.0;
+    const vp=page.getViewport({scale});
+    canvas.width=Math.round(vp.width);
+    canvas.height=Math.round(vp.height);
+    __tplSelCanvasW=canvas.width;
+    __tplSelCanvasH=canvas.height;
+    page.render({canvasContext:ctx,viewport:vp}).promise.then(()=>{
+      // 绘制等分参考线
+      const count=parseInt(document.getElementById('pdfSplitTemplateCount').value)||2;
+      const dir=document.getElementById('pdfSplitTemplateDir').value;
+      ctx.save();
+      ctx.setLineDash([6,4]);
+      ctx.strokeStyle='rgba(224,122,95,0.35)';
+      ctx.lineWidth=1;
+      if(dir==='vertical'){
+        for(let i=1;i<count;i++){
+          const y=Math.round(__tplSelCanvasH*i/count);
+          ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(__tplSelCanvasW,y);ctx.stroke();
+        }
+      }else{
+        for(let i=1;i<count;i++){
+          const x=Math.round(__tplSelCanvasW*i/count);
+          ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,__tplSelCanvasH);ctx.stroke();
+        }
+      }
+      ctx.restore();
+    });
+  });
+
+  const wrap=document.getElementById('templateSelectWrap');
+  const rect=document.getElementById('templateSelectRect');
+  const onDown=e=>{
+    e.preventDefault();
+    const cRect=canvas.getBoundingClientRect();
+    const cx=(e.touches?e.touches[0]:e).clientX;
+    const cy=(e.touches?e.touches[0]:e).clientY;
+    __tplSelStartX=cx-cRect.left;
+    __tplSelStartY=cy-cRect.top;
+    __tplSelDragging=true;
+    rect.style.display='block';
+    rect.style.left=__tplSelStartX+'px';
+    rect.style.top=__tplSelStartY+'px';
+    rect.style.width='0';
+    rect.style.height='0';
+  };
+  const onMove=e=>{
+    if(!__tplSelDragging)return;
+    const cRect=canvas.getBoundingClientRect();
+    const cx=(e.touches?e.touches[0]:e).clientX;
+    const cy=(e.touches?e.touches[0]:e).clientY;
+    const x=Math.min(__tplSelStartX,cx-cRect.left);
+    const y=Math.min(__tplSelStartY,cy-cRect.top);
+    const w=Math.abs(cx-cRect.left-__tplSelStartX);
+    const h=Math.abs(cy-cRect.top-__tplSelStartY);
+    rect.style.left=x+'px';rect.style.top=y+'px';rect.style.width=w+'px';rect.style.height=h+'px';
+    // Convert display coords to canvas coords
+    const scaleX=__tplSelCanvasW/cRect.width;
+    const scaleY=__tplSelCanvasH/cRect.height;
+    __tplSelRect={x:x*scaleX, y:y*scaleY, w:w*scaleX, h:h*scaleY};
+  };
+  const onUp=()=>{
+    __tplSelDragging=false;
+    if(__tplSelRect&&__tplSelRect.w>30&&__tplSelRect.h>30){
+      document.getElementById('templateConfirmBtn').disabled=false;
+      const count=parseInt(document.getElementById('pdfSplitTemplateCount').value)||2;
+      const dir=document.getElementById('pdfSplitTemplateDir').value;
+      if(dir==='vertical'){
+        const bandH=__tplSelCanvasH/count;
+        document.getElementById('templateSelectInfo').textContent=
+          '已框选区域，纵向'+count+'等分，每份约'+Math.round(bandH)+'px（框选高'+Math.round(__tplSelRect.h)+'px）。确认后将按此模板切割所有页面';
+      }else{
+        const bandW=__tplSelCanvasW/count;
+        document.getElementById('templateSelectInfo').textContent=
+          '已框选区域，横向'+count+'等分，每份约'+Math.round(bandW)+'px（框选宽'+Math.round(__tplSelRect.w)+'px）。确认后将按此模板切割所有页面';
+      }
+    }else{
+      rect.style.display='none';
+      __tplSelRect=null;
+      document.getElementById('templateConfirmBtn').disabled=true;
+    }
+  };
+  canvas.onmousedown=onDown;
+  canvas.ontouchstart=onDown;
+  wrap.onmousemove=onMove;
+  wrap.ontouchmove=onMove;
+  document.addEventListener('mouseup',onUp);
+  document.addEventListener('touchend',onUp);
+  __tplSelCleanup=()=>{
+    canvas.onmousedown=null;canvas.ontouchstart=null;
+    wrap.onmousemove=null;wrap.ontouchmove=null;
+    document.removeEventListener('mouseup',onUp);
+    document.removeEventListener('touchend',onUp);
+  };
+}
+function pdfSplitCloseTemplateSelect(event){
+  if(event&&event.target&&event.target.id!=='templateSelectModal')return;
+  document.getElementById('templateSelectModal').classList.remove('show');
+  if(__tplSelCleanup){__tplSelCleanup();__tplSelCleanup=null;}
+}
+function pdfSplitConfirmTemplate(){
+  if(!__tplSelRect||__tplSelRect.w<30||__tplSelRect.h<30)return;
+  // Normalize to 0-1 ratios relative to canvas
+  __tplTemplate={
+    rx:__tplSelRect.x/__tplSelCanvasW,
+    ry:__tplSelRect.y/__tplSelCanvasH,
+    rw:__tplSelRect.w/__tplSelCanvasW,
+    rh:__tplSelRect.h/__tplSelCanvasH
+  };
+  document.getElementById('templateSelectModal').classList.remove('show');
+  if(__tplSelCleanup){__tplSelCleanup();__tplSelCleanup=null;}
+  const count=parseInt(document.getElementById('pdfSplitTemplateCount').value)||2;
+  document.getElementById('pdfSplitTemplateStatus').innerHTML=
+    '<span style="color:#16a34a;">✓ 已设定模板（'+count+'等分），可直接开始拆分</span>';
+  document.getElementById('pdfSplitTemplateSelectBtn').textContent='📐 重新框选';
+  showToast('模板已设定，点击"开始拆分"执行','success');
+}
+// 根据模板生成所有裁剪区域
+function pdfSplitTemplateCropsForPage(canvasW, canvasH){
+  const count=parseInt(document.getElementById('pdfSplitTemplateCount').value)||2;
+  const dir=document.getElementById('pdfSplitTemplateDir').value;
+  if(!__tplTemplate)return null;
+  const t=__tplTemplate;
+  const crops=[];
+  if(dir==='vertical'){
+    // 根据第一个框选的y位置和h，计算每个等分带的起始
+    // 找到框选所在的等分带编号
+    const bandH=canvasH/count;
+    const selBand=Math.min(count-1,Math.floor(t.ry*canvasH/bandH));
+    // 每个带的裁剪区域与框选区域相对位置一致
+    for(let i=0;i<count;i++){
+      const bandTop=i*bandH;
+      const y=bandTop+t.ry*canvasH-selBand*bandH;
+      const h=t.rh*canvasH;
+      crops.push({x:0,y,w:canvasW,h:Math.min(canvasH-y,h),detected:false,templateBased:true});
+    }
+  }else{
+    const bandW=canvasW/count;
+    const selBand=Math.min(count-1,Math.floor(t.rx*canvasW/bandW));
+    for(let i=0;i<count;i++){
+      const bandLeft=i*bandW;
+      const x=bandLeft+t.rx*canvasW-selBand*bandW;
+      const w=t.rw*canvasW;
+      crops.push({x,y:0,w:Math.min(canvasW-x,w),h:canvasH,detected:false,templateBased:true});
+    }
+  }
+  return crops;
+}
+
 let __cropAdjustIdx=null, __cropAdjustPageNum=null, __cropAdjustScale=1, __cropAdjustImgH=0;
 let __cropAdjustNewY=0, __cropAdjustNewH=0, __cropAdjustOriginalH=0;
 
