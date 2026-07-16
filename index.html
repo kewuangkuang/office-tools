@@ -5267,7 +5267,11 @@ async function pdfSplitExecute(){
           }
         }
 
-        const sx=crop.x, sy=crop.y, sw=crop.w, sh=crop.h;
+        // clamp 裁剪区域到页面边界内，防止越界产生黑边
+        const sx=Math.max(0,Math.min(canvas.width-1,crop.x));
+        const sy=Math.max(0,Math.min(canvas.height-1,crop.y));
+        const sw=Math.max(1,Math.min(canvas.width-sx,crop.w));
+        const sh=Math.max(1,Math.min(canvas.height-sy,crop.h));
         // Create cropped canvas
         const cc=document.createElement('canvas');
         cc.width=Math.round(sw); cc.height=Math.round(sh);
@@ -5514,8 +5518,8 @@ function pdfSplitOpenTemplateSelect(){
     const cy=(e.touches?e.touches[0]:e).clientY;
     const scaleX=__tplCanvasW/cRect.width;
     const scaleY=__tplCanvasH/cRect.height;
-    const px=(cx-cRect.left)*scaleX;
-    const py=(cy-cRect.top)*scaleY;
+    const px=Math.max(0,Math.min(__tplCanvasW,(cx-cRect.left)*scaleX));
+    const py=Math.max(0,Math.min(__tplCanvasH,(cy-cRect.top)*scaleY));
     __tplMouseDownX=px; __tplMouseDownY=py; __tplMoved=false;
 
     // 先检查是否点中了已画的框——如果是，删除该框（可重画）
@@ -5544,8 +5548,8 @@ function pdfSplitOpenTemplateSelect(){
     const cy=(e.touches?e.touches[0]:e).clientY;
     const scaleX=__tplCanvasW/cRect.width;
     const scaleY=__tplCanvasH/cRect.height;
-    const curX=(cx-cRect.left)*scaleX;
-    const curY=(cy-cRect.top)*scaleY;
+    const curX=Math.max(0,Math.min(__tplCanvasW,(cx-cRect.left)*scaleX));
+    const curY=Math.max(0,Math.min(__tplCanvasH,(cy-cRect.top)*scaleY));
     __tplDragRect={
       x:Math.min(__tplDragStartX,curX),
       y:Math.min(__tplDragStartY,curY),
@@ -5608,14 +5612,14 @@ function pdfSplitConfirmTemplate(){
 // 根据模板框选区域生成裁剪区域
 function pdfSplitTemplateCropsForPage(canvasW, canvasH){
   if(!__tplTemplateRects||!__tplTemplateRects.length)return null;
-  return __tplTemplateRects.map(t=>({
-    x:t.rx*canvasW,
-    y:t.ry*canvasH,
-    w:t.rw*canvasW,
-    h:t.rh*canvasH,
-    detected:false,
-    templateBased:true
-  }));
+  return __tplTemplateRects.map(t=>{
+    // clamp 到页面边界内，防止裁剪越界产生黑边
+    const x=Math.max(0,Math.min(canvasW,t.rx*canvasW));
+    const y=Math.max(0,Math.min(canvasH,t.ry*canvasH));
+    const w=Math.max(1,Math.min(canvasW-x,t.rw*canvasW));
+    const h=Math.max(1,Math.min(canvasH-y,t.rh*canvasH));
+    return {x,y,w,h,detected:false,templateBased:true};
+  });
 }
 
 let __cropAdjustIdx=null, __cropAdjustPageNum=null, __cropAdjustScale=1, __cropAdjustImgH=0;
@@ -5743,7 +5747,10 @@ async function pdfSplitConfirmCropAdjust(){
     await page.render({canvasContext:ctx,viewport:vp}).promise;
 
     const textContent=await page.getTextContent().catch(()=>({items:[]}));
-    const sx=0, sy=Math.round(__cropAdjustNewY), sw=Math.round(vp.width), sh=Math.round(__cropAdjustNewH);
+    const sx=0;
+    const sy=Math.max(0,Math.min(canvas.height-1,Math.round(__cropAdjustNewY)));
+    const sw=Math.round(vp.width);
+    const sh=Math.max(1,Math.min(canvas.height-sy,Math.round(__cropAdjustNewH)));
     const cc=document.createElement('canvas');
     cc.width=sw; cc.height=sh;
     const cctx=cc.getContext('2d');
