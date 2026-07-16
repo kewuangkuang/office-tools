@@ -2392,10 +2392,41 @@ multiZone.addEventListener('drop',e=>{
 multiInput.addEventListener('change',e=>{ if(e.target.files.length)multiHandleFiles(e.target.files); e.target.value=''; });
 const multiFolderInput = document.getElementById('multiFolderInput');
 multiFolderInput.addEventListener('change',e=>{ if(e.target.files.length)multiHandleFiles(e.target.files,true); e.target.value=''; });
+function multiCollectClipboardFiles(dataTransfer){
+  const files=[];
+  let fileItemCount=0;
+  const add=file=>{
+    if(!file)return;
+    fileItemCount++;
+    if(/\.(xlsx|xls|csv)$/i.test(file.name||'')&&!files.includes(file))files.push(file);
+  };
+  const items=Array.from(dataTransfer?.items||[]);
+  items.forEach(item=>{
+    if(item.kind==='file')add(item.getAsFile());
+  });
+  Array.from(dataTransfer?.files||[]).forEach(file=>{
+    if(!files.includes(file))add(file);
+  });
+  return {files,fileItemCount};
+}
 document.addEventListener('paste',e=>{
-  const items=e.clipboardData?.items; if(!items)return;
-  const fs=[]; for(let i=0;i<items.length;i++){ if(items[i].kind==='file'){ const f=items[i].getAsFile(); if(f&&/\.(xlsx|xls|csv)$/i.test(f.name))fs.push(f); } }
-  if(fs.length&&document.getElementById('page-multi').style.display!=='none'){ e.preventDefault(); multiHandleFiles(fs); showToast('已粘贴 '+fs.length+' 个文件','success'); }
+  const page=document.getElementById('page-multi');
+  if(!page||page.style.display==='none')return;
+  const target=e.target;
+  const isEditable=target&&(
+    /^(INPUT|TEXTAREA)$/i.test(target.tagName)||target.isContentEditable
+  );
+  const result=multiCollectClipboardFiles(e.clipboardData);
+  if(result.files.length){
+    e.preventDefault();
+    multiHandleFiles(result.files);
+    showToast('已粘贴 '+result.files.length+' 个文件','success');
+  }else if(result.fileItemCount){
+    e.preventDefault();
+    showToast('剪贴板文件格式不支持，仅支持 .xlsx、.xls、.csv','error');
+  }else if(!isEditable){
+    showToast('剪贴板中没有可读取的文件，请改用拖拽或“选择文件”','info');
+  }
 });
 
 // 页面级拖拽：全页面空白区域也能接收文件（仅在多文件合并页生效）
