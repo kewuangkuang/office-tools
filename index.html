@@ -1498,7 +1498,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       <div class="upload-zone" id="pdfSplitZone">
         <div class="upload-icon">📄</div>
         <div class="upload-text">拖拽 / 粘贴 / 点击选择 PDF 文件</div>
-        <div class="upload-hint">支持多文件上传，可拖拽文件夹，自动识别内部 PDF</div>
+        <div class="upload-hint">支持多文件上传，可多次追加；按住 ⌘ 点击可选多个</div>
         <div class="upload-btn-row">
           <button class="btn btn-outline" onclick="event.stopPropagation();document.getElementById('pdfSplitInput').click()">选择文件</button>
           <button class="btn btn-outline" onclick="event.stopPropagation();document.getElementById('pdfSplitFolderInput').click()">选择文件夹</button>
@@ -1543,7 +1543,6 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         <div class="toggle-text">拆分方式</div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;">
           <label style="cursor:pointer;font-size:13px;"><input type="radio" name="pdfSplitMode" value="each" checked onchange="pdfSplitUpdateMode()"> 每页一个文件</label>
-          <label style="cursor:pointer;font-size:13px;margin-left:12px;"><input type="radio" name="pdfSplitMode" value="range" onchange="pdfSplitUpdateMode()"> 合并选中页为一个文件</label>
           <label style="cursor:pointer;font-size:13px;margin-left:12px;"><input type="radio" name="pdfSplitMode" value="receipt" onchange="pdfSplitUpdateMode()"> 自动识别回单</label>
           <label style="cursor:pointer;font-size:13px;margin-left:12px;" title="在一页上框选出单个回单区域，之后所有页面按同样区域切割"><input type="radio" name="pdfSplitMode" value="template" onchange="pdfSplitUpdateMode()"> 模板框选拆分</label>
         </div>
@@ -3701,12 +3700,13 @@ pdfSplitZone.addEventListener('click', e => {
 pdfSplitZone.addEventListener('dragover', e => { e.preventDefault(); pdfSplitZone.classList.add('drag-over'); });
 pdfSplitZone.addEventListener('dragleave', () => pdfSplitZone.classList.remove('drag-over'));
 pdfSplitZone.addEventListener('drop', e => { e.preventDefault(); e.stopPropagation(); pdfSplitZone.classList.remove('drag-over'); pdfSplitHandleDrop(e.dataTransfer.items); });
-pdfSplitInput.addEventListener('change', e => { if(e.target.files.length) pdfSplitLoadMultiple(Array.from(e.target.files)); });
+pdfSplitInput.addEventListener('change', e => { if(e.target.files.length){ pdfSplitLoadMultiple(Array.from(e.target.files)); } e.target.value=''; });
 // 初始化时按当前选中的拆分方式同步面板显隐——浏览器刷新会还原单选框状态，
 // 若不在这里同步，就可能出现"每页一个文件"被选中却仍显示回单设置的错位。
 pdfSplitUpdateMode();
 document.getElementById('pdfSplitFolderInput').addEventListener('change', e => {
   const fs=Array.from(e.target.files).filter(f=>/\.pdf$/i.test(f.name));
+  e.target.value='';
   if(!fs.length){ showToast('文件夹中未找到 PDF 文件','error'); return; }
   pdfSplitLoadMultiple(fs);
   showToast('已从文件夹加载 '+fs.length+' 个 PDF 文件','info');
