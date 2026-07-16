@@ -66,6 +66,49 @@ function loadTesseractWordAdapter(html) {
   return context.api;
 }
 
+function loadFixedFieldBoxes(html) {
+  const start = html.indexOf('function pdfSplitReceiptFixedFieldBoxes(');
+  const end = html.indexOf('\nfunction pdfSplitCreateFixedFieldOcrCanvases(', start);
+  assert.ok(start >= 0 && end > start, 'fixed receipt field boxes should exist before canvas creation');
+  const context = {};
+  vm.createContext(context);
+  vm.runInContext(`${html.slice(start, end)}\nthis.api={pdfSplitReceiptFixedFieldBoxes};`, context);
+  return context.api;
+}
+
+function loadAmountParser(html) {
+  const start = html.indexOf('function pdfSplitNormalizeAmountToken(');
+  const end = html.indexOf('\nfunction pdfSplitExtractAmount(', start);
+  assert.ok(start >= 0 && end > start, 'amount parser helpers should exist');
+  assert.match(html.slice(start, end), /function pdfSplitReconcileAmountWithChinese\(/, 'Chinese amount reconciliation should exist');
+  const context = { pdfSplitNormalizeOcrText: value => String(value || '') };
+  vm.createContext(context);
+  vm.runInContext(`${html.slice(start, end)}\nthis.api={pdfSplitReconcileAmountWithChinese};`, context);
+  return context.api;
+}
+
+function loadFixedAmountParser(html) {
+  const start = html.indexOf('function pdfSplitNormalizeAmountToken(');
+  const end = html.indexOf('\nfunction pdfSplitExtractAmount(', start);
+  const snippets = html.slice(start, end);
+  assert.match(snippets, /function pdfSplitExtractFixedAmountInfo\(/, 'fixed numeric-cell parser should exist');
+  const context = { pdfSplitNormalizeOcrText: value => String(value || '') };
+  vm.createContext(context);
+  vm.runInContext(`${snippets}\nthis.api={pdfSplitExtractFixedAmountInfo};`, context);
+  return context.api;
+}
+
+function loadFixedPreference(html) {
+  const start = html.indexOf('function pdfSplitReceiptFieldIsMissing(');
+  const end = html.indexOf('async function pdfSplitOcrReceiptCanvas(', start);
+  const snippets = html.slice(start, end);
+  assert.match(snippets, /function pdfSplitPreferFixedReceiptFields\(/, 'fixed field preference should exist');
+  const context = {};
+  vm.createContext(context);
+  vm.runInContext(`${snippets}\nthis.api={pdfSplitPreferFixedReceiptFields};`, context);
+  return context.api;
+}
+
 test('required OCR fields follow the selected receipt naming mode', () => {
   const { pdfSplitRequiredReceiptFields: required } = loadPureHelpers(source());
   assert.deepEqual(Array.from(required('amount', '')), ['amount']);
@@ -222,6 +265,81 @@ test('missing party names trigger a focused top-of-receipt OCR pass', () => {
   }
 });
 
+test('ABC standard receipt fallback isolates payer, payee and amount cells', () => {
+  const { pdfSplitReceiptFixedFieldBoxes: boxes } = loadFixedFieldBoxes(source());
+  const fields = boxes(1000, 500);
+  assert.deepEqual(JSON.parse(JSON.stringify(fields)), {
+    payer: { x: 120, y: 190, w: 380, h: 50 },
+    payee: { x: 615, y: 190, w: 370, h: 50 },
+    amount: { x: 120, y: 253, w: 380, h: 45 },
+    amountUpper: { x: 615, y: 253, w: 370, h: 45 }
+  });
+});
+
+test('actual Suci receipt grid rows anchor fields independently of crop whitespace', () => {
+  const { pdfSplitReceiptFixedFieldBoxes: boxes } = loadFixedFieldBoxes(source());
+  const first = boxes(1489, 776, [186, 220, 256, 290, 323, 358, 392, 428]);
+  const second = boxes(1489, 700, [111, 145, 181, 215, 249, 284, 318, 353]);
+  assert.deepEqual(JSON.parse(JSON.stringify(first)), {
+    payer: { x: 208, y: 259, w: 469, h: 28 },
+    payee: { x: 834, y: 259, w: 476, h: 28 },
+    amount: { x: 208, y: 326, w: 469, h: 29 },
+    amountUpper: { x: 834, y: 326, w: 476, h: 29 }
+  });
+  assert.equal(second.payer.y, 184);
+  assert.equal(second.amount.y, 252);
+});
+
+test('fixed field canvases detect table rows before choosing OCR boxes', () => {
+  const html = source();
+  const start = html.indexOf('function pdfSplitCreateFixedFieldOcrCanvases(');
+  const end = html.indexOf('\nfunction pdfSplitExtractFixedPartyName(', start);
+  const creator = html.slice(start, end);
+  assert.match(creator, /pdfSplitDetectReceiptTableRows\(canvas\)/);
+  assert.match(creator, /pdfSplitReceiptFixedFieldBoxes\(canvas\.width,canvas\.height,tableRows\)/);
+});
+
+test('Chinese uppercase amount restores a decimal point missed by OCR', () => {
+  const { pdfSplitReconcileAmountWithChinese: reconcile } = loadAmountParser(source());
+  const result = reconcile(
+    { amount: '137900.00元', warning: '', source: '数字金额' },
+    '金额（大写）壹仟叁佰柒拾玖元整'
+  );
+  assert.equal(result.amount, '1379.00元');
+  assert.match(result.warning, /已按中文大写校正/);
+  assert.equal(result.source, '中文大写金额校正');
+});
+
+test('actual Suci fixed amount cells accept standalone OCR numbers', () => {
+  const { pdfSplitExtractFixedAmountInfo: parse } = loadFixedAmountParser(source());
+  assert.equal(parse(['850.00']).amount, '850.00元');
+  assert.equal(parse(['55.25']).amount, '55.25元');
+  assert.equal(parse(['1379.00']).amount, '1379.00元');
+});
+
+test('trusted ABC fixed cells override plausible but wrong full-page OCR names', () => {
+  const { pdfSplitPreferFixedReceiptFields: prefer } = loadFixedPreference(source());
+  const result = prefer(
+    { payer: '四川久远银海软件股份有限公司', payee: 'Faty', amount: '137900.00元' },
+    { payer: '四川杏林医药连锁有限责任公司眉山市苏祠街药店', payee: '张海琴', amount: '1379.00元' },
+    true
+  );
+  assert.equal(result.payer, '四川杏林医药连锁有限责任公司眉山市苏祠街药店');
+  assert.equal(result.payee, '张海琴');
+  assert.equal(result.amount, '1379.00元');
+});
+
+test('fixed-position OCR still runs when full-receipt Tesseract returns no lines', () => {
+  const html = source();
+  const coordinator = html.slice(html.indexOf('async function pdfSplitOcrReceiptCanvas'), html.indexOf('function pdfSplitBuildReceiptBaseName'));
+  assert.match(coordinator, /pdfSplitCreateFixedFieldOcrCanvases\(canvas\)/, 'coordinator creates standard field crops');
+  const fullLineGuard = coordinator.indexOf('if(tess.lines?.length)');
+  const fixedFallback = coordinator.indexOf('pdfSplitCreateFixedFieldOcrCanvases(canvas)');
+  assert.ok(fixedFallback > fullLineGuard, 'fixed fallback follows the full OCR attempt');
+  const guardEnd = coordinator.indexOf('\n      }', fullLineGuard);
+  assert.ok(fixedFallback > guardEnd, 'fixed fallback is not trapped inside the non-empty full OCR branch');
+});
+
 test('unrecognized party names expose compact OCR diagnostics in the preview', () => {
   const html = source();
   const coordinator = html.slice(html.indexOf('async function pdfSplitOcrReceiptCanvas'), html.indexOf('function pdfSplitBuildReceiptBaseName'));
@@ -233,8 +351,8 @@ test('unrecognized party names expose compact OCR diagnostics in the preview', (
 
 test('receipt result preview does not clip party fields below the thumbnail row', () => {
   const renderer = source().slice(source().indexOf('function pdfSplitRenderResults'), source().indexOf('function pdfSplitDataUrlToBytes'));
-  assert.match(renderer, /previewThumbs\.style\.maxHeight=mode==='receipt'\?'none':'300px'/, 'receipt mode expands the result area for field metadata');
-  assert.match(renderer, /previewThumbs\.style\.overflowY=mode==='receipt'\?'visible':'auto'/, 'receipt metadata remains visible instead of scrolling under the export controls');
+  assert.match(renderer, /previewThumbs\.style\.maxHeight=isReceiptLike\?'none':'300px'/, 'receipt-like modes expand the result area for field metadata');
+  assert.match(renderer, /previewThumbs\.style\.overflowY=isReceiptLike\?'visible':'auto'/, 'receipt metadata remains visible instead of scrolling under the export controls');
 });
 
 test('canonical entry sends the original receipt crop to OCR so small party labels survive', () => {

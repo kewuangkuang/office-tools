@@ -2238,10 +2238,11 @@ function pdfSplitFlattenTesseractWords(data){
   });
   return words;
 }
-async function pdfSplitRunTesseractOcr(canvas){
+async function pdfSplitRunTesseractOcr(canvas,parameters){
   if(!await ensureTesseractLoaded())return {lines:[],blocks:[],raw:null};
   try{
     const worker=window.__pdfSplitTesseractWorker;
+    if(parameters&&worker.setParameters)await worker.setParameters(parameters);
     const {data}=await worker.recognize(canvas);
     const rawLines=(data?.text||'').split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
     const lines=rawLines.filter(s=>s.length>=2);
@@ -2267,6 +2268,100 @@ function pdfSplitCreatePartyNameOcrCanvas(canvas){
   ctx.fillStyle='#fff'; ctx.fillRect(0,0,out.width,out.height);
   ctx.drawImage(canvas,sx,sy,sw,sh,0,0,out.width,out.height);
   return out;
+}
+function pdfSplitReceiptFixedFieldBoxes(canvasW,canvasH,tableRows){
+  // 农行「网上银行电子回单」标准表格：付款户名在左、收款户名在右，小写金额在左下。
+  // 扫描 PDF 拆分后每张回单底部留白高度不同，纵坐标必须锚定表格横线，不能再用 canvasH 比例。
+  if(Array.isArray(tableRows)&&tableRows.length>=6){
+    const inset=3;
+    const rowBox=(top,bottom,x,w)=>({
+      x:Math.round(canvasW*x),
+      y:Math.round(top+inset),
+      w:Math.round(canvasW*w),
+      h:Math.max(1,Math.round(bottom-top-inset*2))
+    });
+    return {
+      payer:rowBox(tableRows[2],tableRows[3],0.14,0.315),
+      payee:rowBox(tableRows[2],tableRows[3],0.56,0.32),
+      amount:rowBox(tableRows[4],tableRows[5],0.14,0.315),
+      amountUpper:rowBox(tableRows[4],tableRows[5],0.56,0.32)
+    };
+  }
+  // 未检出表格线时保留旧比例作最后回退。
+  return {
+    payer:{x:Math.round(canvasW*0.12),y:Math.round(canvasH*0.38),w:Math.round(canvasW*0.38),h:Math.round(canvasH*0.10)},
+    payee:{x:Math.round(canvasW*0.615),y:Math.round(canvasH*0.38),w:Math.round(canvasW*0.37),h:Math.round(canvasH*0.10)},
+    amount:{x:Math.round(canvasW*0.12),y:Math.round(canvasH*0.505),w:Math.round(canvasW*0.38),h:Math.round(canvasH*0.09)},
+    amountUpper:{x:Math.round(canvasW*0.615),y:Math.round(canvasH*0.505),w:Math.round(canvasW*0.37),h:Math.round(canvasH*0.09)}
+  };
+}
+function pdfSplitDetectReceiptTableRows(canvas){
+  try{
+    const w=canvas.width,h=Math.min(canvas.height,Math.round(canvas.width*0.48));
+    if(w<100||h<80)return [];
+    const ctx=canvas.getContext('2d',{willReadFrequently:true});
+    const data=ctx.getImageData(0,0,w,h).data;
+    const x1=Math.round(w*0.035),x2=Math.round(w*0.88);
+    const xStep=Math.max(2,Math.round(w/500));
+    const darkRows=[];
+    for(let y=0;y<h;y++){
+      let dark=0,total=0;
+      for(let x=x1;x<=x2;x+=xStep){
+        const i=(y*w+x)*4;
+        const gray=(data[i]*299+data[i+1]*587+data[i+2]*114)/1000;
+        if(gray<165)dark++;
+        total++;
+      }
+      if(total&&dark/total>0.42)darkRows.push(y);
+    }
+    const groups=[];
+    darkRows.forEach(y=>{
+      const last=groups[groups.length-1];
+      if(!last||y-last[last.length-1]>2)groups.push([y]);
+      else last.push(y);
+    });
+    const centers=groups.map(group=>Math.round(group.reduce((sum,y)=>sum+y,0)/group.length));
+    const minGap=w*0.016,maxGap=w*0.032;
+    let best=[];
+    for(let i=0;i<centers.length;i++){
+      const run=[centers[i]];
+      for(let j=i+1;j<centers.length;j++){
+        const gap=centers[j]-run[run.length-1];
+        if(gap>=minGap&&gap<=maxGap)run.push(centers[j]);
+        else if(gap>maxGap)break;
+      }
+      if(run.length>best.length)best=run;
+    }
+    return best.length>=6?best:[];
+  }catch(e){
+    console.warn('农行回单表格线检测失败',e);
+    return [];
+  }
+}
+function pdfSplitCreateFixedFieldOcrCanvases(canvas){
+  const tableRows=pdfSplitDetectReceiptTableRows(canvas);
+  const boxes=pdfSplitReceiptFixedFieldBoxes(canvas.width,canvas.height,tableRows);
+  const result={};
+  Object.entries(boxes).forEach(([key,box])=>{
+    const zoom=3.2;
+    const out=document.createElement('canvas');
+    out.width=Math.max(1,Math.round(box.w*zoom));
+    out.height=Math.max(1,Math.round(box.h*zoom));
+    const ctx=out.getContext('2d',{alpha:false});
+    ctx.fillStyle='#fff'; ctx.fillRect(0,0,out.width,out.height);
+    ctx.imageSmoothingEnabled=true;
+    ctx.imageSmoothingQuality='high';
+    ctx.drawImage(canvas,box.x,box.y,box.w,box.h,0,0,out.width,out.height);
+    result[key]=out;
+  });
+  return result;
+}
+function pdfSplitExtractFixedPartyName(lines){
+  const text=(lines||[]).map(pdfSplitNormalizeOcrText).join('').replace(/\s+/g,'');
+  const name=pdfSplitCleanPartyName(text);
+  const chineseCount=(name.match(/[\u4e00-\u9fa5]/g)||[]).length;
+  if(name.length<2||chineseCount<2||/银行|账号|开户|金额|人民币|客户|回单|AGRICULTURAL|BANK/i.test(name))return '';
+  return name;
 }
 
 
@@ -4533,7 +4628,8 @@ function pdfSplitFixOcrChinese(text){
 function pdfSplitAmountFromChinese(text){
   // 先修正 OCR 常见误字，再严格匹配
   const fixed=pdfSplitFixOcrChinese(String(text||'').replace(/\s+/g,''));
-  const m=fixed.match(/人民币([零壹贰叁肆伍陆柒捌玖拾佰仟万亿萬億]+)元(整|[零壹贰叁肆伍陆柒捌玖]角[零壹贰叁肆伍陆柒捌玖]分|[零壹贰叁肆伍陆柒捌玖]角|[零壹贰叁肆伍陆柒捌玖]分)?/);
+  // 固定「金额（大写）」单元格里通常没有“人民币”前缀，因此前缀可选。
+  const m=fixed.match(/(?:人民币)?([零壹贰叁肆伍陆柒捌玖拾佰仟万亿萬億]+)元(整|[零壹贰叁肆伍陆柒捌玖]角[零壹贰叁肆伍陆柒捌玖]分|[零壹贰叁肆伍陆柒捌玖]角|[零壹贰叁肆伍陆柒捌玖]分)?/);
   if(!m)return {amount:'',raw:''};
   const yuanStr=m[1], remainder=m[2]||'';
   let jiao=0,fen=0;
@@ -4544,6 +4640,35 @@ function pdfSplitAmountFromChinese(text){
   if(fm)fen=dmap[fm[1]]||0;
   const yuan=pdfSplitChineseIntegerToNumber(yuanStr);
   return {amount:(yuan+jiao/10+fen/100).toFixed(2)+'元',raw:fixed};
+}
+function pdfSplitReconcileAmountWithChinese(digitalInfo,upperText){
+  const digital=Object.assign({amount:'',warning:'',source:''},digitalInfo||{});
+  const upper=pdfSplitAmountFromChinese(upperText);
+  if(!upper.amount)return Object.assign(digital,{verifiedByChinese:false});
+  if(!digital.amount){
+    return {amount:upper.amount,warning:'已根据中文大写金额补全',source:'中文大写金额校正',verifiedByChinese:true};
+  }
+  const digitalNum=pdfSplitAmountNumber(digital.amount);
+  const upperNum=pdfSplitAmountNumber(upper.amount);
+  if(digitalNum!=null&&upperNum!=null&&Math.abs(digitalNum-upperNum)<0.009){
+    return {amount:digital.amount,warning:digital.warning||'',source:'数字金额（与大写一致）',verifiedByChinese:true};
+  }
+  const warning=(digital.warning?digital.warning+'；':'')+
+    `数字金额(${digital.amount})与中文大写(${upper.amount})不一致，已按中文大写校正`;
+  return {amount:upper.amount,warning,source:'中文大写金额校正',verifiedByChinese:true};
+}
+function pdfSplitExtractFixedAmountInfo(lines){
+  // 固定金额单元格裁剪后只剩数字，不再强制要求“金额/元/¥”标签。
+  const text=(lines||[]).map(pdfSplitNormalizeOcrText).join('').replace(/\s+/g,'');
+  const candidates=text.match(/[0-9Oo][0-9Oo,，.]*[0-9Oo]/g)||[];
+  for(const raw of candidates.sort((a,b)=>b.length-a.length)){
+    const info=pdfSplitNormalizeAmountTokenInfo(raw);
+    const amountNum=pdfSplitAmountNumber(info.amount);
+    if(info.amount&&amountNum!=null&&amountNum>0&&amountNum<=999999999){
+      return {amount:info.amount,warning:info.warning||'',source:'固定金额单元格'};
+    }
+  }
+  return {amount:'',warning:'未识别到金额，请手动核对',source:''};
 }
 function pdfSplitExtractAmountInfo(compact, lines){
   const text=compact||'';
@@ -4838,6 +4963,19 @@ function pdfSplitPreferCoordinatePartyNames(fields, coordinateNames){
   });
   return out;
 }
+function pdfSplitPreferFixedReceiptFields(fields,fixedFields,trustedLayout){
+  let out=Object.assign({},fields||{});
+  if(!trustedLayout)return pdfSplitMergeMissingReceiptFields(out,fixedFields);
+  ['payer','payee'].forEach(key=>{
+    if(!pdfSplitReceiptFieldIsMissing(fixedFields?.[key]))out[key]=fixedFields[key];
+  });
+  if(!pdfSplitReceiptFieldIsMissing(fixedFields?.amount)){
+    out.amount=fixedFields.amount;
+    out.amountWarning=fixedFields.amountWarning||'';
+    out.amountSource=fixedFields.amountSource||'';
+  }
+  return out;
+}
 async function pdfSplitOcrReceiptCanvas(canvas, fallbackLines, layoutFields){
   let lines=fallbackLines||[];
   const partyOcrTrace=[];
@@ -4887,9 +5025,30 @@ async function pdfSplitOcrReceiptCanvas(canvas, fallbackLines, layoutFields){
             fields.rawText=[fields.rawText,focused.lines.join('\n')].filter(Boolean).join('\n');
           }
         }
-        fields.ocrSource='tesseract';
-        fields.amountWarning=(fields.amountWarning?fields.amountWarning+'；':'')+'扫描件/OCR识别结果可能存在误差，请核对';
       }
+      // 农行标准回单的整页 OCR 可能返回空行，也可能返回“看似非空”的错误名称。
+      // 因此固定单元格识别放在 tess.lines 条件外，并用大写金额作为该版式的校验信号。
+      const fixedCanvases=pdfSplitCreateFixedFieldOcrCanvases(canvas);
+      const fixedLines={};
+      for(const key of ['payer','payee','amount','amountUpper']){
+        const fixed=await pdfSplitRunTesseractOcr(fixedCanvases[key],{tessedit_pageseg_mode:'7',preserve_interword_spaces:'1'});
+        const wordLine=(fixed.words||[]).map(word=>word.text||'').join('').trim();
+        fixedLines[key]=fixed.lines?.length?fixed.lines:(wordLine?[wordLine]:[]);
+        partyOcrTrace.push(`固定${key}区行${fixedLines[key].length}`);
+      }
+      const digitalInfo=pdfSplitExtractFixedAmountInfo(fixedLines.amount);
+      const amountInfo=pdfSplitReconcileAmountWithChinese(digitalInfo,fixedLines.amountUpper.join(''));
+      const fixedFields={
+        payer:pdfSplitExtractFixedPartyName(fixedLines.payer),
+        payee:pdfSplitExtractFixedPartyName(fixedLines.payee),
+        amount:amountInfo.amount,
+        amountWarning:amountInfo.warning,
+        amountSource:amountInfo.source
+      };
+      fields=pdfSplitPreferFixedReceiptFields(fields,fixedFields,amountInfo.verifiedByChinese);
+      fields.rawText=[fields.rawText,...Object.values(fixedLines).map(part=>part.join('\n'))].filter(Boolean).join('\n');
+      fields.ocrSource='tesseract';
+      fields.amountWarning=(fields.amountWarning?fields.amountWarning+'；':'')+'扫描件/OCR识别结果可能存在误差，请核对';
     }catch(e){ console.warn('Tesseract 回单识别失败',e); }
   }else{
     fields.ocrSource='文字层';
