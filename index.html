@@ -2308,20 +2308,7 @@ multiFolderInput.addEventListener('change',e=>{ if(e.target.files.length)multiHa
 document.addEventListener('paste',e=>{
   const items=e.clipboardData?.items; if(!items)return;
   const fs=[]; for(let i=0;i<items.length;i++){ if(items[i].kind==='file'){ const f=items[i].getAsFile(); if(f&&/\.(xlsx|xls|csv)$/i.test(f.name))fs.push(f); } }
-  if(fs.length&&document.getElementById('page-multi').style.display!=='none'){
-    e.preventDefault();
-    // 粘贴的文件可能因浏览器限制无法正常读取，先检测文件是否有效
-    const valid=[];
-    const invalid=[];
-    Promise.all(fs.map(f=>f.arrayBuffer().then(buf=>{if(buf.byteLength>0)valid.push(f);else invalid.push(f);}).catch(()=>invalid.push(f)))).then(()=>{
-      if(valid.length){
-        multiHandleFiles(valid);
-        showToast('已粘贴 '+valid.length+' 个文件'+(invalid.length?'，'+invalid.length+' 个文件读取失败（建议拖拽或点击上传）':''),'success');
-      }else if(invalid.length){
-        showToast('粘贴的文件无法读取，建议使用拖拽或点击上传按钮','error');
-      }
-    });
-  }
+  if(fs.length&&document.getElementById('page-multi').style.display!=='none'){ e.preventDefault(); multiHandleFiles(fs); showToast('已粘贴 '+fs.length+' 个文件','success'); }
 });
 
 // 页面级拖拽：全页面空白区域也能接收文件（仅在多文件合并页生效）
@@ -3690,6 +3677,7 @@ let pdfSplitFiles = []; // [{file, doc, jsDoc, pages, pageBlobs, results, active
 function pdfSplitUpdateMode(){
   const mode=document.querySelector('input[name="pdfSplitMode"]:checked')?.value;
   document.getElementById('pdfSplitReceiptOptions').style.display=mode==='receipt'?'':'none';
+  document.getElementById('pdfSplitTemplateOptions').style.display=mode==='template'?'':'none';
   // 切到回单模式时检测本地 OCR 资源
   if(mode!=='receipt'){
     const b=document.getElementById('pdfSplitOcrBanner'); if(b)b.remove();
