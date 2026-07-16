@@ -3713,9 +3713,12 @@ document.getElementById('pdfSplitFolderInput').addEventListener('change', e => {
 });
 document.addEventListener('paste', e => {
   const items=e.clipboardData?.items; if(!items)return;
+  if(document.getElementById('page-pdf-split').style.display==='none')return;
+  const pdfs=[];
   for(let i=0;i<items.length;i++){
-    if(items[i].kind==='file'){ const f=items[i].getAsFile(); if(f&&/\.pdf$/i.test(f.name)&&document.getElementById('page-pdf-split').style.display!=='none'){e.preventDefault(); pdfSplitLoadMultiple([f]); return;} }
+    if(items[i].kind==='file'){ const f=items[i].getAsFile(); if(f&&/\.pdf$/i.test(f.name)) pdfs.push(f); }
   }
+  if(pdfs.length){ e.preventDefault(); pdfSplitLoadMultiple(pdfs); }
 });
 
 async function pdfSplitHandleDrop(items){
