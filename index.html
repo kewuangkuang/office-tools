@@ -1498,15 +1498,21 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       <div class="upload-zone" id="pdfSplitZone">
         <div class="upload-icon">📄</div>
         <div class="upload-text">拖拽 / 粘贴 / 点击选择 PDF 文件</div>
-        <div class="upload-hint">支持 .pdf 格式，可拖拽文件夹，自动识别内部 PDF</div>
+        <div class="upload-hint">支持多文件上传，可拖拽文件夹，自动识别内部 PDF</div>
         <div class="upload-btn-row">
           <button class="btn btn-outline" onclick="event.stopPropagation();document.getElementById('pdfSplitInput').click()">选择文件</button>
           <button class="btn btn-outline" onclick="event.stopPropagation();document.getElementById('pdfSplitFolderInput').click()">选择文件夹</button>
           <button class="btn btn-outline btn-clear-upload" id="pdfSplitClearBtn" onclick="event.stopPropagation();pdfSplitClearUpload()" style="display:none;">🗑️ 一键清除</button>
         </div>
       </div>
-      <input type="file" id="pdfSplitInput" accept=".pdf" style="display:none">
+      <input type="file" id="pdfSplitInput" accept=".pdf" multiple style="display:none">
       <input type="file" id="pdfSplitFolderInput" accept=".pdf" webkitdirectory style="display:none">
+    </div>
+
+    <!-- File list (multi-file) -->
+    <div class="card" id="pdfSplitFileListCard" style="display:none;">
+      <div class="card-title"><span class="icon">📋</span> 已上传文件 <span id="pdfSplitFileCount" style="font-weight:400;color:var(--gray-500);font-size:13px;"></span></div>
+      <div id="pdfSplitFileList" style="max-height:200px;overflow-y:auto;"></div>
     </div>
 
     <!-- Page Preview -->
@@ -1538,7 +1544,8 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         <div style="display:flex;gap:8px;flex-wrap:wrap;">
           <label style="cursor:pointer;font-size:13px;"><input type="radio" name="pdfSplitMode" value="each" checked onchange="pdfSplitUpdateMode()"> 每页一个文件</label>
           <label style="cursor:pointer;font-size:13px;margin-left:12px;"><input type="radio" name="pdfSplitMode" value="range" onchange="pdfSplitUpdateMode()"> 合并选中页为一个文件</label>
-          <label style="cursor:pointer;font-size:13px;margin-left:12px;"><input type="radio" name="pdfSplitMode" value="receipt" onchange="pdfSplitUpdateMode()"> 回单模式</label>
+          <label style="cursor:pointer;font-size:13px;margin-left:12px;"><input type="radio" name="pdfSplitMode" value="receipt" onchange="pdfSplitUpdateMode()"> 自动识别回单</label>
+          <label style="cursor:pointer;font-size:13px;margin-left:12px;" title="在一页上框选出单个回单区域，之后所有页面按同样区域切割"><input type="radio" name="pdfSplitMode" value="template" onchange="pdfSplitUpdateMode()"> 模板框选拆分</label>
         </div>
       </div>
       <div id="pdfSplitReceiptOptions" style="display:none;margin-top:12px;padding:12px;background:var(--gray-50);border-radius:8px;">
@@ -1574,6 +1581,32 @@ https://github.com/nodeca/pako/blob/main/LICENSE
           <input type="text" id="pdfSplitReceiptNameTemplate" value="{收款人}{金额}" placeholder="如：{收款人}{日期}" title="支持：{收款人}、{付款人}、{金额}、{日期}、{流水号}、{序号}" style="min-width:220px;padding:5px 8px;border:1px solid var(--gray-300);border-radius:6px;font-size:13px;display:none;">
         </div>
         <div style="font-size:12px;color:var(--gray-400);margin-top:8px;">💡 请根据实际 PDF 每页包含的回单数量选择；自定义命名支持 {收款人}/{付款人}/{金额}/{日期}/{流水号}/{序号}；本地解析 PDF 和识别回单，不上传财务单据</div>
+      </div>
+      <div id="pdfSplitTemplateOptions" style="display:none;margin-top:12px;padding:12px;background:var(--gray-50);border-radius:8px;">
+        <div style="font-size:13px;font-weight:600;color:var(--gray-700);margin-bottom:8px;">模板框选设置</div>
+        <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
+          <label style="font-size:13px;color:var(--gray-600);display:flex;align-items:center;gap:6px;">
+            每页回单数：
+            <select id="pdfSplitTemplateCount" style="padding:4px 8px;border:1px solid var(--gray-300);border-radius:6px;font-size:13px;">
+              <option value="2" selected>2</option>
+              <option value="3">3</option>
+              <option value="4">4</option>
+              <option value="1">1</option>
+            </select>
+          </label>
+          <label style="font-size:13px;color:var(--gray-600);display:flex;align-items:center;gap:6px;">
+            排列方向：
+            <select id="pdfSplitTemplateDir" style="padding:4px 8px;border:1px solid var(--gray-300);border-radius:6px;font-size:13px;">
+              <option value="vertical" selected>纵向（上下排列）</option>
+              <option value="horizontal">横向（左右排列）</option>
+            </select>
+          </label>
+        </div>
+        <div style="font-size:12px;color:var(--gray-500);margin-top:8px;">💡 先点击"打开第1页框选"，在预览图上拖动框选一个回单区域，确认后按此模板切割所有页面</div>
+        <div class="btn-row" style="margin-top:10px;">
+          <button class="btn btn-outline" onclick="pdfSplitOpenTemplateSelect()" id="pdfSplitTemplateSelectBtn">📐 打开第1页框选</button>
+          <span id="pdfSplitTemplateStatus" style="font-size:12px;color:var(--gray-400);"></span>
+        </div>
       </div>
       <div class="btn-row" style="margin-top:14px;">
         <button class="btn btn-primary" onclick="pdfSplitExecute()" id="pdfSplitBtn">✂️ 开始拆分</button>
@@ -1978,6 +2011,27 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   </div>
 </div>
 
+<!-- 模板框选模态框 -->
+<div class="modal-mask" id="templateSelectModal" onclick="pdfSplitCloseTemplateSelect(event)">
+  <div class="crop-adjust-modal" onclick="event.stopPropagation()">
+    <div class="crop-adjust-header">
+      <h3>📐 框选单个回单区域</h3>
+      <button class="changelog-close-btn" onclick="pdfSplitCloseTemplateSelect()" aria-label="关闭" style="background:rgba(255,255,255,0.2);border-color:rgba(255,255,255,0.3);color:white;">×</button>
+    </div>
+    <div class="crop-adjust-body">
+      <div class="crop-adjust-info" id="templateSelectInfo">在图片上拖动鼠标框选第一个回单区域，将按此模板等分切割所有页面</div>
+      <div class="crop-adjust-canvas-wrap" id="templateSelectWrap" style="cursor:crosshair;">
+        <canvas id="templateSelectCanvas" style="display:block;max-width:100%;max-height:62vh;"></canvas>
+        <div id="templateSelectRect" style="display:none;position:absolute;border:2px dashed #3B82F6;background:rgba(59,130,246,0.08);pointer-events:none;z-index:5;"></div>
+      </div>
+      <div class="crop-adjust-actions">
+        <button class="btn btn-outline" onclick="pdfSplitCloseTemplateSelect()">取消</button>
+        <button class="btn btn-primary" onclick="pdfSplitConfirmTemplate()" id="templateConfirmBtn" disabled>确认模板</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- 回单裁剪调整模态框 -->
 <div class="modal-mask" id="cropAdjustModal" onclick="pdfSplitCloseCropAdjust(event)">
   <div class="crop-adjust-modal" onclick="event.stopPropagation()">
@@ -2254,7 +2308,20 @@ multiFolderInput.addEventListener('change',e=>{ if(e.target.files.length)multiHa
 document.addEventListener('paste',e=>{
   const items=e.clipboardData?.items; if(!items)return;
   const fs=[]; for(let i=0;i<items.length;i++){ if(items[i].kind==='file'){ const f=items[i].getAsFile(); if(f&&/\.(xlsx|xls|csv)$/i.test(f.name))fs.push(f); } }
-  if(fs.length&&document.getElementById('page-multi').style.display!=='none'){ e.preventDefault(); multiHandleFiles(fs); showToast('已粘贴 '+fs.length+' 个文件','success'); }
+  if(fs.length&&document.getElementById('page-multi').style.display!=='none'){
+    e.preventDefault();
+    // 粘贴的文件可能因浏览器限制无法正常读取，先检测文件是否有效
+    const valid=[];
+    const invalid=[];
+    Promise.all(fs.map(f=>f.arrayBuffer().then(buf=>{if(buf.byteLength>0)valid.push(f);else invalid.push(f);}).catch(()=>invalid.push(f)))).then(()=>{
+      if(valid.length){
+        multiHandleFiles(valid);
+        showToast('已粘贴 '+valid.length+' 个文件'+(invalid.length?'，'+invalid.length+' 个文件读取失败（建议拖拽或点击上传）':''),'success');
+      }else if(invalid.length){
+        showToast('粘贴的文件无法读取，建议使用拖拽或点击上传按钮','error');
+      }
+    });
+  }
 });
 
 // 页面级拖拽：全页面空白区域也能接收文件（仅在多文件合并页生效）
@@ -3618,6 +3685,7 @@ function pdfClearAll(){
 // PDF SPLIT TOOL
 // ==========================================
 let pdfSplitFile = null, pdfSplitDoc = null, pdfSplitJsDoc = null, pdfSplitPages = []; // { pageNum, selected, previewUrl }
+let pdfSplitFiles = []; // [{file, doc, jsDoc, pages, pageBlobs, results, active}] 多文件支持
 
 function pdfSplitUpdateMode(){
   const mode=document.querySelector('input[name="pdfSplitMode"]:checked')?.value;
@@ -3645,20 +3713,20 @@ pdfSplitZone.addEventListener('click', e => {
 pdfSplitZone.addEventListener('dragover', e => { e.preventDefault(); pdfSplitZone.classList.add('drag-over'); });
 pdfSplitZone.addEventListener('dragleave', () => pdfSplitZone.classList.remove('drag-over'));
 pdfSplitZone.addEventListener('drop', e => { e.preventDefault(); e.stopPropagation(); pdfSplitZone.classList.remove('drag-over'); pdfSplitHandleDrop(e.dataTransfer.items); });
-pdfSplitInput.addEventListener('change', e => { if(e.target.files.length) pdfSplitLoad(e.target.files[0]); });
+pdfSplitInput.addEventListener('change', e => { if(e.target.files.length) pdfSplitLoadMultiple(Array.from(e.target.files)); });
 // 初始化时按当前选中的拆分方式同步面板显隐——浏览器刷新会还原单选框状态，
 // 若不在这里同步，就可能出现"每页一个文件"被选中却仍显示回单设置的错位。
 pdfSplitUpdateMode();
 document.getElementById('pdfSplitFolderInput').addEventListener('change', e => {
   const fs=Array.from(e.target.files).filter(f=>/\.pdf$/i.test(f.name));
   if(!fs.length){ showToast('文件夹中未找到 PDF 文件','error'); return; }
-  pdfSplitLoad(fs[0]);
-  showToast('已从文件夹加载：'+fs[0].name+'（共 '+fs.length+' 个 PDF，当前仅处理第一个）','info');
+  pdfSplitLoadMultiple(fs);
+  showToast('已从文件夹加载 '+fs.length+' 个 PDF 文件','info');
 });
 document.addEventListener('paste', e => {
   const items=e.clipboardData?.items; if(!items)return;
   for(let i=0;i<items.length;i++){
-    if(items[i].kind==='file'){ const f=items[i].getAsFile(); if(f&&/\.pdf$/i.test(f.name)&&document.getElementById('page-pdf-split').style.display!=='none'){e.preventDefault(); pdfSplitLoad(f); return;} }
+    if(items[i].kind==='file'){ const f=items[i].getAsFile(); if(f&&/\.pdf$/i.test(f.name)&&document.getElementById('page-pdf-split').style.display!=='none'){e.preventDefault(); pdfSplitLoadMultiple([f]); return;} }
   }
 });
 
@@ -3669,37 +3737,132 @@ async function pdfSplitHandleDrop(items){
     if(!entry)continue;
     await multiTraverseEntry(entry,'',files,/\.pdf$/i);
   }
-  const pdf=files.find(f=>/\.pdf$/i.test(f.name));
-  if(!pdf){ showToast('未找到 PDF 文件','error'); return; }
-  pdfSplitLoad(pdf);
+  if(!files.length){ showToast('未找到 PDF 文件','error'); return; }
+  pdfSplitLoadMultiple(files);
 }
 
-async function pdfSplitLoad(file){
-  if(!file||!/\.pdf$/i.test(file.name)){ showToast('请选择 PDF 文件','error'); return; }
+// 多文件上传：追加到文件列表，并自动激活第一个新文件
+async function pdfSplitLoadMultiple(files){
+  const pdfFiles=files.filter(f=>/\.pdf$/i.test(f.name));
+  if(!pdfFiles.length){ showToast('未找到 PDF 文件','error'); return; }
+  const startIndex=pdfSplitFiles.length;
+  for(const f of pdfFiles){
+    pdfSplitFiles.push({file:f, doc:null, jsDoc:null, pages:[], pageBlobs:{}, results:[], thumbUrl:null});
+  }
+  pdfSplitRenderFileList();
+  setUploadClearVisible('pdfSplitClearBtn', true);
+  // 自动加载第一个新文件
+  pdfSplitActivateFile(startIndex);
+  showToast(`已添加 ${pdfFiles.length} 个 PDF 文件（共 ${pdfSplitFiles.length} 个）`,'success');
+}
+
+// 渲染文件列表
+function pdfSplitRenderFileList(){
+  const card=document.getElementById('pdfSplitFileListCard');
+  const list=document.getElementById('pdfSplitFileList');
+  const countSpan=document.getElementById('pdfSplitFileCount');
+  if(!pdfSplitFiles.length){ card.style.display='none'; return; }
+  card.style.display='';
+  countSpan.textContent=`(${pdfSplitFiles.length} 个)`;
+  let html='';
+  pdfSplitFiles.forEach((item,i)=>{
+    const sizeStr=(item.file.size/1024).toFixed(0);
+    const isActive=item===pdfSplitActiveFileEntry();
+    const pageStr=item.doc?`${item.doc.getPageCount()} 页`:'未加载';
+    html+=`<div onclick="pdfSplitActivateFile(${i})" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:8px;margin-bottom:4px;cursor:pointer;background:${isActive?'var(--primary-light,rgba(99,102,241,0.08))':'var(--gray-50)'};border:1.5px solid ${isActive?'var(--primary)':'var(--gray-200)'};transition:all .15s;" onmouseenter="this.style.borderColor='var(--primary)'" onmouseleave="this.style.borderColor='${isActive?'var(--primary)':'var(--gray-200)'}'">
+      <span style="font-size:16px;">📄</span>
+      <div style="flex:1;min-width:0;">
+        <div style="font-size:13px;font-weight:600;color:var(--gray-800);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(item.file.name)}</div>
+        <div style="font-size:11px;color:var(--gray-500);">${sizeStr} KB · ${pageStr}</div>
+      </div>
+      <button onclick="event.stopPropagation();pdfSplitRemoveFile(${i})" title="移除此文件" style="background:none;border:none;cursor:pointer;font-size:14px;color:var(--gray-400);padding:4px 6px;border-radius:4px;flex-shrink:0;" onmouseenter="this.style.color='var(--danger)'" onmouseleave="this.style.color='var(--gray-400)'">✕</button>
+    </div>`;
+  });
+  list.innerHTML=html;
+}
+
+function pdfSplitActiveFileEntry(){ return pdfSplitFiles.find(f=>f.active); }
+
+// 激活某个文件（加载PDF并显示页预览）
+async function pdfSplitActivateFile(index){
+  pdfSplitFiles.forEach((f,i)=>f.active=(i===index));
+  const entry=pdfSplitFiles[index];
+  if(!entry) return;
+  // 如果还没加载过，先加载
+  if(!entry.doc){
+    await pdfSplitLoadSingle(entry);
+  }else{
+    // 切换回已有文件：恢复单文件状态引用
+    pdfSplitFile=entry.file;
+    pdfSplitDoc=entry.doc;
+    pdfSplitJsDoc=entry.jsDoc;
+    pdfSplitPages=entry.pages;
+    pdfSplitPageBlobs=entry.pageBlobs;
+    pdfSplitResults=entry.results;
+    pdfSplitRenderPages();
+    pdfSplitRenderResults();
+    document.getElementById('pdfSplitPreviewCard').style.display='';
+    document.getElementById('pdfSplitSettingsCard').style.display='';
+    if(pdfSplitResults.length) document.getElementById('pdfSplitResultCard').style.display='';
+    else document.getElementById('pdfSplitResultCard').style.display='none';
+  }
+  pdfSplitRenderFileList();
+}
+
+// 加载单个文件条目的 PDF 内容
+async function pdfSplitLoadSingle(entry){
   try{
-    pdfSplitFile=file;
-    pdfSplitPageBlobs={};
-    pdfSplitResults=[];
-    document.getElementById('pdfSplitPreviewThumbs').innerHTML='';
-    document.getElementById('pdfSplitResultCard').style.display='none';
-    const buf=await file.arrayBuffer();
+    const buf=await entry.file.arrayBuffer();
     const bufForPdfLib=buf.slice(0);
     const bufForPdfJs=buf.slice(0);
-    pdfSplitDoc=await PDFLib.PDFDocument.load(bufForPdfLib,{ignoreEncryption:true});
+    entry.doc=await PDFLib.PDFDocument.load(bufForPdfLib,{ignoreEncryption:true});
     if(!window.pdfjsLib){ showToast('PDF.js 加载失败，无法预览/回单拆分','error'); return; }
-    pdfSplitJsDoc=await window.pdfjsLib.getDocument({data:bufForPdfJs}).promise;
-    const total=pdfSplitDoc.getPageCount();
-    pdfSplitPages=[];
-    for(let i=0;i<total;i++){
-      pdfSplitPages.push({pageNum:i+1, selected:true});
-    }
+    entry.jsDoc=await window.pdfjsLib.getDocument({data:bufForPdfJs}).promise;
+    const total=entry.doc.getPageCount();
+    entry.pages=[];
+    for(let i=0;i<total;i++) entry.pages.push({pageNum:i+1, selected:true});
+    entry.pageBlobs={};
+    entry.results=[];
+    // 同步到全局单文件状态
+    pdfSplitFile=entry.file;
+    pdfSplitDoc=entry.doc;
+    pdfSplitJsDoc=entry.jsDoc;
+    pdfSplitPages=entry.pages;
+    pdfSplitPageBlobs=entry.pageBlobs;
+    pdfSplitResults=entry.results;
     pdfSplitRenderPages();
     pdfSplitGeneratePageThumbnails();
     document.getElementById('pdfSplitPreviewCard').style.display='';
     document.getElementById('pdfSplitSettingsCard').style.display='';
-    setUploadClearVisible('pdfSplitClearBtn', true);
-    showToast(`已加载 ${file.name} · ${total} 页`,'success');
+    document.getElementById('pdfSplitResultCard').style.display='none';
+    document.getElementById('pdfSplitExportName').value='';
+    showToast(`已加载 ${entry.file.name} · ${total} 页`,'success');
   }catch(e){ showToast('加载 PDF 失败：'+e.message,'error'); }
+}
+
+// 移除文件
+function pdfSplitRemoveFile(index){
+  const entry=pdfSplitFiles[index];
+  if(!entry)return;
+  pdfSplitFiles.splice(index,1);
+  if(!pdfSplitFiles.length){
+    pdfSplitReset();
+    return;
+  }
+  // 如果删除的是当前激活的文件，激活相邻的
+  if(!pdfSplitFiles.some(f=>f.active)){
+    const newIndex=Math.min(index, pdfSplitFiles.length-1);
+    pdfSplitFiles[newIndex].active=true;
+  }
+  pdfSplitRenderFileList();
+  const active=pdfSplitActiveFileEntry();
+  if(active && active.doc){
+    pdfSplitFile=active.file; pdfSplitDoc=active.doc; pdfSplitJsDoc=active.jsDoc;
+    pdfSplitPages=active.pages; pdfSplitPageBlobs=active.pageBlobs; pdfSplitResults=active.results;
+    pdfSplitRenderPages();
+    if(active.results.length) pdfSplitRenderResults();
+  }
+  showToast('已移除，剩余 '+pdfSplitFiles.length+' 个文件','info');
 }
 
 function pdfSplitSafeFileName(name){
@@ -3791,13 +3954,21 @@ function pdfSplitReceiptTitleRows(pageItems, pageH, count){
     .map(r=>({y:r.y,top:r.top,bottom:r.bottom,text:r.items.map(it=>it.text).join('').replace(/\s+/g,'')}))
     .filter(r=>{
       const t=r.text;
-      if(/客户回单/.test(t))return true;
+      // 排除页面大标题"XX银行网上银行客户回单"和底部"回单查询号"等非回单标题
+      if(/^[\u4e00-\u9fa5]+银行网上银行客户回单$/.test(t))return false;
+      if(/回单查询号|可查询核实/.test(t))return false;
+      if(/银行提请注意|不具有法律效力/.test(t))return false;
+      if(/专用章|印章/.test(t))return false;
+      // 排除正文里含"回单"的短句（如"本回单不作为"）
+      if(/本回单不作为|以本回单|该笔回单/.test(t))return false;
+      // 匹配真正的回单标题
+      if(/客户回单$/.test(t)||/客户回单[（(]/.test(t))return true;
       if(/付款回单/.test(t))return true;
       if(/付费回单/.test(t))return true;
-      if(/网上银行电子回单/.test(t)&&!/专用章|印章/.test(t))return true;
+      if(/网上银行电子回单/.test(t))return true;
       if(/国内支付业务/.test(t))return true;
-      if(/电子回单/.test(t)&&!/专用章|印章|号码|编号|验证码|校验码|流水号|交易号|单号/.test(t)){
-        // 标题行通常较短，排除拼接了正文的长行
+      if(/汇款回单/.test(t))return true;
+      if(/电子回单/.test(t)){
         if(t.length>22)return false;
         return true;
       }
@@ -4927,11 +5098,16 @@ async function pdfSplitGeneratePageThumbnails(){
       ctx.fillRect(0,0,canvas.width,canvas.height);
       await page.render({canvasContext:ctx,viewport}).promise;
       pdfSplitPages[i].thumbUrl=canvas.toDataURL('image/jpeg',0.78);
+      // 同步到多文件条目
+      const active=pdfSplitActiveFileEntry();
+      if(active) active.pages=pdfSplitPages;
       pdfSplitRenderPages();
     }catch(e){
       console.warn('PDF 拆分页缩略图生成失败', e);
     }
   }
+  // 完成后刷新文件列表（更新页数显示）
+  pdfSplitRenderFileList();
 }
 let currentPdfPreviewIndex=null;
 async function pdfSplitPagePreview(i){
@@ -5149,6 +5325,9 @@ async function pdfSplitExecute(){
   pdfSplitRenderResults(mode);
   document.getElementById('pdfSplitResultCard').style.display='';
   document.getElementById('pdfSplitResultCard').scrollIntoView({behavior:'smooth'});
+  // 同步结果到多文件条目
+  const active=pdfSplitActiveFileEntry();
+  if(active) active.results=pdfSplitResults;
   showToast(`拆分完成！${pdfSplitResults.length} 个文件`,'success');
 }
 let pdfSplitResults=[];
@@ -5486,12 +5665,15 @@ async function pdfSplitDownload(){
 function pdfSplitReset(){
   pdfSplitThumbRunId++;
   pdfSplitFile=null; pdfSplitDoc=null; pdfSplitJsDoc=null; pdfSplitPages=[]; pdfSplitResults=[]; pdfSplitPageBlobs={};
+  pdfSplitFiles=[];
   document.getElementById('pdfSplitPageGrid').innerHTML='';
   document.getElementById('pdfSplitStatsBar').innerHTML='';
   document.getElementById('pdfSplitPreviewThumbs').innerHTML='';
   document.getElementById('pdfSplitPreviewCard').style.display='none';
   document.getElementById('pdfSplitSettingsCard').style.display='none';
   document.getElementById('pdfSplitResultCard').style.display='none';
+  document.getElementById('pdfSplitFileListCard').style.display='none';
+  document.getElementById('pdfSplitFileList').innerHTML='';
   document.getElementById('pdfSplitInput').value='';
   document.getElementById('pdfSplitFolderInput').value='';
   setUploadClearVisible('pdfSplitClearBtn', false);
@@ -5506,7 +5688,7 @@ function pdfSplitReset(){
   showToast('已重置','info');
 }
 function pdfSplitClearUpload(){
-  if(!pdfSplitFile){ showToast('当前没有文件可清除','info'); return; }
+  if(!pdfSplitFiles.length){ showToast('当前没有文件可清除','info'); return; }
   pdfSplitReset();
 }
 
