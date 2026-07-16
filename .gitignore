@@ -1,6 +1,7 @@
 .graphify-venv/
 graphify-out/
 node_modules/
+.worktrees/
 *.log
 .DS_Store
 *.traineddata
