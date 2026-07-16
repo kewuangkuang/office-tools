@@ -3674,6 +3674,7 @@ function pdfClearAll(){
 // ==========================================
 let pdfSplitFile = null, pdfSplitDoc = null, pdfSplitJsDoc = null, pdfSplitPages = []; // { pageNum, selected, previewUrl }
 let pdfSplitFiles = []; // [{file, doc, jsDoc, pages, pageBlobs, results, active}] 多文件支持
+let pdfSplitViewMode='single'; // 'single' 或 'all'（全部汇总视图）
 
 function pdfSplitUpdateMode(){
   const mode=document.querySelector('input[name="pdfSplitMode"]:checked')?.value;
@@ -3778,11 +3779,12 @@ function pdfSplitRenderTabBar(){
   const bar=document.getElementById('pdfSplitTabBar');
   if(!bar)return;
   if(!pdfSplitFiles.length){ bar.innerHTML=''; return; }
+  const totalPages=pdfSplitFiles.reduce((s,f)=>s+(f.doc?f.doc.getPageCount():0),0);
+  let html=`<div onclick="pdfSplitActivateAll()" style="padding:8px 14px;font-size:13px;font-weight:${pdfSplitViewMode==='all'?'600':'400'};color:${pdfSplitViewMode==='all'?'var(--primary)':'var(--gray-500)'};border-bottom:2px solid ${pdfSplitViewMode==='all'?'var(--primary)':'transparent'};cursor:pointer;white-space:nowrap;flex-shrink:0;margin-bottom:-2px;transition:all .15s;" onmouseenter="this.style.color='var(--primary)'" onmouseleave="this.style.color='${pdfSplitViewMode==='all'?'var(--primary)':'var(--gray-500)'}'">📊 全部 <span style="font-size:11px;opacity:0.7;">${totalPages}p</span></div>`;
   const active=pdfSplitActiveFileEntry();
-  const activeIdx=active?pdfSplitFiles.indexOf(active):0;
-  let html='';
+  const activeIdx=active?pdfSplitFiles.indexOf(active):-1;
   pdfSplitFiles.forEach((item,i)=>{
-    const isActive=i===activeIdx;
+    const isActive=i===activeIdx && pdfSplitViewMode==='single';
     const shortName=item.file.name.replace(/\.pdf$/i,'');
     const displayName=shortName.length>12?shortName.slice(0,10)+'…':shortName;
     const pageStr=item.doc?`${item.doc.getPageCount()}p`:'…';
@@ -3793,8 +3795,19 @@ function pdfSplitRenderTabBar(){
 
 function pdfSplitActiveFileEntry(){ return pdfSplitFiles.find(f=>f.active); }
 
+// 激活「全部」视图：汇总所有文件的页面
+function pdfSplitActivateAll(){
+  pdfSplitViewMode='all';
+  pdfSplitFiles.forEach(f=>f.active=false);
+  pdfSplitRenderPages();
+  pdfSplitRenderTabBar();
+  document.getElementById('pdfSplitPreviewCard').style.display='';
+  document.getElementById('pdfSplitSettingsCard').style.display='';
+}
+
 // 激活某个文件（加载PDF并显示页预览）
 async function pdfSplitActivateFile(index){
+  pdfSplitViewMode='single';
   pdfSplitFiles.forEach((f,i)=>f.active=(i===index));
   const entry=pdfSplitFiles[index];
   if(!entry) return;
@@ -5067,6 +5080,39 @@ function pdfSplitSetReceiptName(i, val){
 function pdfSplitRenderPages(){
   const grid=document.getElementById('pdfSplitPageGrid');
   const stats=document.getElementById('pdfSplitStatsBar');
+  if(pdfSplitViewMode==='all'){
+    // 全部视图：汇总所有文件的页面
+    let totalPages=0, totalSel=0, totalSize=0;
+    pdfSplitFiles.forEach(f=>{
+      if(f.doc){
+        totalPages+=f.pages.length;
+        totalSel+=f.pages.filter(p=>p.selected).length;
+        totalSize+=f.file.size;
+      }
+    });
+    stats.innerHTML=`<div class="pdf-stat-item"><span class="pdf-stat-val">${totalPages}</span><span class="pdf-stat-lbl">总页数</span></div><div class="pdf-stat-item"><span class="pdf-stat-val">${totalSel}</span><span class="pdf-stat-lbl">已选</span></div><div class="pdf-stat-item"><span class="pdf-stat-val">${(totalSize/1024/1024).toFixed(1)} MB</span><span class="pdf-stat-lbl">${pdfSplitFiles.length} 个文件</span></div>`;
+    let html='';
+    pdfSplitFiles.forEach((item,fi)=>{
+      if(!item.doc||!item.pages.length)return;
+      const shortName=item.file.name.replace(/\.pdf$/i,'');
+      html+=`<div style="width:100%;font-size:12px;font-weight:600;color:var(--gray-600);margin:10px 0 4px;padding-left:2px;border-left:3px solid var(--primary);padding-left:8px;">📄 ${esc(shortName)} <span style="font-weight:400;color:var(--gray-400);">(${item.pages.length}页)</span></div>`;
+      item.pages.forEach((p,pi)=>{
+        const sel=p.selected;
+        const thumb=p.thumbUrl
+          ? `<img src="${p.thumbUrl}" alt="第 ${pi+1} 页" style="width:100%;height:100%;object-fit:contain;display:block;background:white;">`
+          : `<div style="font-size:12px;font-weight:700;color:var(--gray-400);">生成缩略图...</div>`;
+        html+=`<div class="pdf-split-page-card ${sel?'selected':''}" onclick="pdfSplitToggleAll(${fi},${pi})" style="width:110px;cursor:pointer;border:2px solid ${sel?'var(--primary)':'var(--gray-200)'};border-radius:8px;overflow:hidden;padding:3px;text-align:center;position:relative;background:var(--card-bg);flex-shrink:0;">
+          <div style="position:relative;overflow:hidden;border-radius:5px;background:var(--gray-100);width:100%;height:140px;display:flex;align-items:center;justify-content:center;">
+            ${thumb}
+            <button class="sheet-preview-btn" onclick="event.stopPropagation();pdfSplitAllPagePreview(${fi},${pi})" title="悬浮预览" style="position:absolute;top:3px;right:3px;background:rgba(255,255,255,0.96);border:1px solid var(--gray-300);width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-size:14px;z-index:2;padding:0;box-shadow:0 2px 8px rgba(0,0,0,0.15);">👁️</button>
+          </div>
+          <div style="font-size:11px;font-weight:600;color:var(--gray-700);padding:3px 0 1px;">第 ${pi+1} 页 ${sel?'✅':''}</div>
+        </div>`;
+      });
+    });
+    grid.innerHTML=html;
+    return;
+  }
   if(!pdfSplitDoc||!pdfSplitPages.length)return;
   const total=pdfSplitPages.length;
   const selCount=pdfSplitPages.filter(p=>p.selected).length;
@@ -5142,6 +5188,31 @@ async function pdfSplitPagePreview(i){
   panel.style.display='';
   currentPdfPreviewIndex=i;
 }
+// 全部视图下的页面悬浮预览
+async function pdfSplitAllPagePreview(fi,pi){
+  const entry=pdfSplitFiles[fi];
+  if(!entry||!entry.doc)return;
+  const panel=document.getElementById('pdfPreviewPanel');
+  const key=`${fi}-${pi}`;
+  if(currentPdfPreviewIndex===key && panel.style.display!=='none'){ closePdfPreview(); return; }
+  let blob=entry.pageBlobs[pi];
+  if(!blob){
+    const subDoc=await PDFLib.PDFDocument.create();
+    const [page]=await subDoc.copyPages(entry.doc,[pi]);
+    subDoc.addPage(page);
+    const bytes=await subDoc.save();
+    blob=new Blob([bytes],{type:'application/pdf'});
+    entry.pageBlobs[pi]=blob;
+  }
+  const url=URL.createObjectURL(blob);
+  const body=document.getElementById('pdfPreviewPanelBody');
+  const title=document.getElementById('pdfPreviewPanelTitle');
+  body.innerHTML=`<iframe src="${url}#toolbar=0&navpanes=0" style="width:100%;height:100%;border:none;display:block;" frameborder="0"></iframe>`;
+  const shortName=entry.file.name.replace(/\.pdf$/i,'');
+  title.textContent=`📄 ${shortName} - 第 ${pi+1} 页`;
+  panel.style.display='';
+  currentPdfPreviewIndex=key;
+}
 function closePdfPreview(){ document.getElementById('pdfPreviewPanel').style.display='none'; document.getElementById('pdfPreviewPanelBody').innerHTML=''; currentPdfPreviewIndex=null; }
 
 async function pdfSplitResultPreview(i){
@@ -5190,8 +5261,28 @@ function pdfSplitToggle(i){
   pdfSplitPages[i].selected=!pdfSplitPages[i].selected;
   pdfSplitRenderPages();
 }
-function pdfSplitSelectAll(){ pdfSplitPages.forEach(p=>p.selected=true); pdfSplitRenderPages(); }
-function pdfSplitClearAll(){ pdfSplitPages.forEach(p=>p.selected=false); pdfSplitRenderPages(); }
+function pdfSplitToggleAll(fi,pi){
+  const entry=pdfSplitFiles[fi];
+  if(!entry||!entry.pages[pi])return;
+  entry.pages[pi].selected=!entry.pages[pi].selected;
+  pdfSplitRenderPages();
+}
+function pdfSplitSelectAll(){
+  if(pdfSplitViewMode==='all'){
+    pdfSplitFiles.forEach(f=>f.pages.forEach(p=>p.selected=true));
+  }else{
+    pdfSplitPages.forEach(p=>p.selected=true);
+  }
+  pdfSplitRenderPages();
+}
+function pdfSplitClearAll(){
+  if(pdfSplitViewMode==='all'){
+    pdfSplitFiles.forEach(f=>f.pages.forEach(p=>p.selected=false));
+  }else{
+    pdfSplitPages.forEach(p=>p.selected=false);
+  }
+  pdfSplitRenderPages();
+}
 function pdfSplitSelectRange(){
   const from=parseInt(document.getElementById('pdfSplitRangeFrom').value)||1;
   const to=parseInt(document.getElementById('pdfSplitRangeTo').value)||pdfSplitPages.length;
@@ -5898,6 +5989,7 @@ function pdfSplitReset(){
   pdfSplitThumbRunId++;
   pdfSplitFile=null; pdfSplitDoc=null; pdfSplitJsDoc=null; pdfSplitPages=[]; pdfSplitResults=[]; pdfSplitPageBlobs={};
   pdfSplitFiles=[];
+  pdfSplitViewMode='single';
   __tplTemplateRects=null; __tplRects=[];
   document.getElementById('pdfSplitTemplateStatus').innerHTML='';
   document.getElementById('pdfSplitTemplateSelectBtn').textContent='📐 打开第1页框选';
