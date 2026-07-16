@@ -5180,14 +5180,7 @@ async function pdfSplitExecute(){
   if(!pdfSplitDoc)return;
   const mode=document.querySelector('input[name="pdfSplitMode"]:checked')?.value;
   let pageNums=[];
-  if(mode==='receipt'||mode==='template'){
-    pdfSplitPages.forEach((p,i)=>{ if(p.selected)pageNums.push(i); });
-  }else if(mode==='each'){
-    pdfSplitPages.forEach((p,i)=>{ if(p.selected)pageNums.push(i); });
-  }else{
-    const selected=pdfSplitPages.map((p,i)=>p.selected?i:-1).filter(i=>i>=0);
-    if(selected.length) pageNums=[...selected];
-  }
+  pdfSplitPages.forEach((p,i)=>{ if(p.selected)pageNums.push(i); });
   if(!pageNums.length){ showToast('请选择要拆分的页面','error'); return; }
 
   pdfSplitResults=[];
@@ -5347,10 +5340,8 @@ function pdfSplitUpdateExportFormat(){
     input.placeholder=pdfSplitResults.length>1?'ZIP 文件名（内含 JPG 图片）':'JPG 文件名';
   }else if(mode==='receipt'||mode==='template'){
     input.placeholder='每个回单单独命名';
-  }else if(mode==='each'){
-    input.placeholder='每个文件单独命名（第N页.pdf）';
   }else{
-    input.placeholder='合并结果';
+    input.placeholder='每个文件单独命名（第N页.pdf）';
   }
 }
 function pdfSplitRenderResults(mode){
@@ -5863,21 +5854,6 @@ async function pdfSplitDownload(){
   const customName=document.getElementById('pdfSplitExportName').value.trim();
   if(pdfSplitCurrentExportFormat()==='jpg'){
     await pdfSplitDownloadJpg(customName);
-    return;
-  }
-  if(mode==='range'){
-    // 合并选中页为一个PDF
-    const subDoc=await PDFLib.PDFDocument.create();
-    for(const r of pdfSplitResults){
-      const tmpDoc=await PDFLib.PDFDocument.load(r.bytes,{ignoreEncryption:true});
-      const pages=await subDoc.copyPages(tmpDoc,tmpDoc.getPageIndices());
-      pages.forEach(p=>subDoc.addPage(p));
-    }
-    const bytes=await subDoc.save();
-    const blob=new Blob([bytes],{type:'application/pdf'});
-    const fn=customName||pdfSplitFile.name.replace(/\.pdf$/i,'')+'_拆分';
-    const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=fn+'.pdf'; a.click();
-    showToast('已导出合并PDF','success');
     return;
   }
   if(pdfSplitResults.length===1){
