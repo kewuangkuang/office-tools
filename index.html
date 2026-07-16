@@ -1518,6 +1518,8 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     <!-- Page Preview -->
     <div class="card" id="pdfSplitPreviewCard" style="display:none;">
       <div class="card-title"><span class="icon">👁️</span> 第二步：预览 & 选择拆页</div>
+      <!-- 文件标签栏 -->
+      <div id="pdfSplitTabBar" style="display:flex;gap:0;border-bottom:2px solid var(--gray-200);margin-bottom:12px;overflow-x:auto;flex-wrap:nowrap;"></div>
       <div class="pdf-stats-bar" id="pdfSplitStatsBar" style="margin-bottom:12px;"></div>
       <div style="display:flex;flex-wrap:wrap;gap:6px;justify-content:flex-start;" id="pdfSplitPageGrid">
         <!-- 页码卡片动态生成 -->
@@ -3770,6 +3772,23 @@ function pdfSplitRenderFileList(){
     </div>`;
   });
   list.innerHTML=html;
+  pdfSplitRenderTabBar();
+}
+function pdfSplitRenderTabBar(){
+  const bar=document.getElementById('pdfSplitTabBar');
+  if(!bar)return;
+  if(!pdfSplitFiles.length){ bar.innerHTML=''; return; }
+  const active=pdfSplitActiveFileEntry();
+  const activeIdx=active?pdfSplitFiles.indexOf(active):0;
+  let html='';
+  pdfSplitFiles.forEach((item,i)=>{
+    const isActive=i===activeIdx;
+    const shortName=item.file.name.replace(/\.pdf$/i,'');
+    const displayName=shortName.length>12?shortName.slice(0,10)+'…':shortName;
+    const pageStr=item.doc?`${item.doc.getPageCount()}p`:'…';
+    html+=`<div onclick="pdfSplitActivateFile(${i})" style="padding:8px 14px;font-size:13px;font-weight:${isActive?'600':'400'};color:${isActive?'var(--primary)':'var(--gray-500)'};border-bottom:2px solid ${isActive?'var(--primary)':'transparent'};cursor:pointer;white-space:nowrap;flex-shrink:0;margin-bottom:-2px;transition:all .15s;" onmouseenter="this.style.color='var(--primary)'" onmouseleave="this.style.color='${isActive?'var(--primary)':'var(--gray-500)'}'">${esc(displayName)} <span style="font-size:11px;opacity:0.7;">${pageStr}</span></div>`;
+  });
+  bar.innerHTML=html;
 }
 
 function pdfSplitActiveFileEntry(){ return pdfSplitFiles.find(f=>f.active); }
@@ -3798,6 +3817,7 @@ async function pdfSplitActivateFile(index){
     else document.getElementById('pdfSplitResultCard').style.display='none';
   }
   pdfSplitRenderFileList();
+  pdfSplitRenderTabBar();
 }
 
 // 加载单个文件条目的 PDF 内容
@@ -5889,6 +5909,7 @@ function pdfSplitReset(){
   document.getElementById('pdfSplitResultCard').style.display='none';
   document.getElementById('pdfSplitFileListCard').style.display='none';
   document.getElementById('pdfSplitFileList').innerHTML='';
+  document.getElementById('pdfSplitTabBar').innerHTML='';
   document.getElementById('pdfSplitInput').value='';
   document.getElementById('pdfSplitFolderInput').value='';
   setUploadClearVisible('pdfSplitClearBtn', false);
