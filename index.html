@@ -301,6 +301,88 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   .changelog-entry ul { padding-left: 18px; }
   .changelog-entry li { font-size: 13px; color: var(--gray-700); line-height: 1.65; margin-bottom: 4px; }
 
+  /* ===== Receipt Crop Adjust Modal ===== */
+  .crop-adjust-modal {
+    width: min(720px, 96vw);
+    max-height: min(88vh, 800px);
+    overflow: hidden;
+    border-radius: 14px;
+    background: white;
+    border: 1px solid var(--gray-200);
+    box-shadow: 0 20px 70px rgba(0,0,0,0.24);
+    display: flex; flex-direction: column;
+  }
+  .crop-adjust-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--gray-200);
+    background: linear-gradient(135deg,#E07A5F,#D96B4F);
+    color: white;
+  }
+  .crop-adjust-header h3 { font-size: 15px; font-weight: 700; margin: 0; }
+  .crop-adjust-body {
+    padding: 16px;
+    overflow-y: auto;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .crop-adjust-canvas-wrap {
+    position: relative;
+    background: var(--gray-100);
+    border-radius: 10px;
+    overflow: hidden;
+    border: 1px solid var(--gray-200);
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 300px;
+  }
+  .crop-adjust-canvas-wrap img, .crop-adjust-canvas-wrap canvas {
+    max-width: 100%;
+    max-height: 62vh;
+    display: block;
+  }
+  .crop-adjust-line {
+    position: absolute;
+    left: 0; right: 0;
+    height: 3px;
+    background: #E07A5F;
+    cursor: ns-resize;
+    z-index: 10;
+    box-shadow: 0 0 0 2px rgba(224,122,95,0.25);
+    border-radius: 2px;
+  }
+  .crop-adjust-line::after {
+    content: '⋮⋮';
+    position: absolute;
+    left: 50%; top: 50%;
+    transform: translate(-50%,-50%);
+    color: white;
+    font-size: 10px;
+    letter-spacing: 2px;
+    background: #E07A5F;
+    padding: 2px 6px;
+    border-radius: 4px;
+    line-height: 1;
+  }
+  .crop-adjust-line.top-line { top: 0; }
+  .crop-adjust-line.bottom-line { bottom: 0; }
+  .crop-adjust-info {
+    font-size: 12px;
+    color: var(--gray-500);
+    text-align: center;
+  }
+  .crop-adjust-actions {
+    display: flex;
+    gap: 10px;
+    justify-content: flex-end;
+    padding-top: 8px;
+    border-top: 1px solid var(--gray-100);
+  }
+
   /* ===== Container ===== */
   .container { max-width: 860px; margin: 0 auto; padding: 24px 16px 60px; }
 
@@ -1117,6 +1199,14 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       <div class="card-title"><span class="icon">⚙️</span> 第三步：合并设置</div>
 
       <div class="toggle-row">
+        <div class="toggle-text">导出组织方式<small>可把同名 Sheet 分别汇总到独立工作表</small></div>
+        <div style="display:flex;flex-direction:column;gap:6px;font-size:13px;color:var(--gray-600);">
+          <label><input type="radio" name="multiOutputMode" value="single" checked> 合并到一张表</label>
+          <label><input type="radio" name="multiOutputMode" value="grouped"> 按同名 Sheet 分开</label>
+        </div>
+      </div>
+
+      <div class="toggle-row">
         <div class="toggle-text">选择标题行<small>前 N 行作为表头</small></div>
         <div style="display:flex;align-items:center;gap:8px;">
           <input type="number" id="multiHeaderRows" value="1" min="0" max="20" style="width:72px;padding:8px 12px;border:1px solid var(--gray-300);border-radius:8px;font-size:14px;color:var(--gray-700);outline:none;" onchange="multiHeaderChange()">
@@ -1457,9 +1547,8 @@ https://github.com/nodeca/pako/blob/main/LICENSE
           <label style="font-size:13px;color:var(--gray-600);display:flex;align-items:center;gap:6px;">
             每页回单数：
             <select id="pdfSplitReceiptCount" onchange="pdfSplitUpdateReceiptUI()" style="padding:4px 8px;border:1px solid var(--gray-300);border-radius:6px;font-size:13px;">
-              <option value="auto" selected>自动识别</option>
               <option value="1">1</option>
-              <option value="2">2</option>
+              <option value="2" selected>2</option>
               <option value="3">3</option>
               <option value="custom">自定义数量</option>
             </select>
@@ -1484,7 +1573,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
           </label>
           <input type="text" id="pdfSplitReceiptNameTemplate" value="{收款人}{金额}" placeholder="如：{收款人}{日期}" title="支持：{收款人}、{付款人}、{金额}、{日期}、{流水号}、{序号}" style="min-width:220px;padding:5px 8px;border:1px solid var(--gray-300);border-radius:6px;font-size:13px;display:none;">
         </div>
-        <div style="font-size:12px;color:var(--gray-400);margin-top:8px;">💡 默认按“客户回单/付款回单/付费回单/电子回单”标题自动判断每页几张；自定义命名支持 {收款人}/{付款人}/{金额}/{日期}/{流水号}/{序号}；本地解析 PDF 和识别回单，不上传财务单据</div>
+        <div style="font-size:12px;color:var(--gray-400);margin-top:8px;">💡 请根据实际 PDF 每页包含的回单数量选择；自定义命名支持 {收款人}/{付款人}/{金额}/{日期}/{流水号}/{序号}；本地解析 PDF 和识别回单，不上传财务单据</div>
       </div>
       <div class="btn-row" style="margin-top:14px;">
         <button class="btn btn-primary" onclick="pdfSplitExecute()" id="pdfSplitBtn">✂️ 开始拆分</button>
@@ -1874,6 +1963,28 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         <ul>
           <li>上线 Excel 合并、Sheet 合并、PDF 合并、PDF 拆分、批量重命名、表格拆分、文件名汇总。</li>
         </ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 回单裁剪调整模态框 -->
+<div class="modal-mask" id="cropAdjustModal" onclick="pdfSplitCloseCropAdjust(event)">
+  <div class="crop-adjust-modal" onclick="event.stopPropagation()">
+    <div class="crop-adjust-header">
+      <h3>✂️ 调整裁剪区域</h3>
+      <button class="changelog-close-btn" onclick="pdfSplitCloseCropAdjust()" aria-label="关闭" style="background:rgba(255,255,255,0.2);border-color:rgba(255,255,255,0.3);color:white;">×</button>
+    </div>
+    <div class="crop-adjust-body">
+      <div class="crop-adjust-info">拖动上下红线调整裁剪范围，确认后重新识别该回单</div>
+      <div class="crop-adjust-canvas-wrap" id="cropAdjustCanvasWrap">
+        <img id="cropAdjustImg" src="" alt="原页预览" style="display:none;">
+        <div class="crop-adjust-line top-line" id="cropAdjustTopLine"></div>
+        <div class="crop-adjust-line bottom-line" id="cropAdjustBottomLine"></div>
+      </div>
+      <div class="crop-adjust-actions">
+        <button class="btn btn-outline" onclick="pdfSplitCloseCropAdjust()">取消</button>
+        <button class="btn btn-primary" onclick="pdfSplitConfirmCropAdjust()">确认重新裁剪</button>
       </div>
     </div>
   </div>
@@ -2574,10 +2685,32 @@ function multiToggleSource(){
   box.style.display=''; custom.style.display=rad.checked?'':'none';
 }
 
-function multiMerge(){
-  const allSheets=[];
-  multiFiles.forEach(f=>{ f.sheets.forEach(sh=>{ if(sh.selected)allSheets.push({fileName:f.relPath||f.name,sheetName:sh.name,data:sh.data}); }); });
-  if(!allSheets.length){ showToast('请选择工作表','error'); return; }
+function multiGroupSheetsByName(allSheets){
+  const groups=[];
+  const byName=new Map();
+  allSheets.forEach(sheet=>{
+    const name=String(sheet.sheetName||'').trim()||'工作表';
+    let group=byName.get(name);
+    if(!group){ group={name,sheets:[]}; byName.set(name,group); groups.push(group); }
+    group.sheets.push(sheet);
+  });
+  return groups;
+}
+
+function multiUniqueSheetName(name,usedNames){
+  const used=usedNames||new Set();
+  const base=(String(name||'').trim().replace(/[\\/:*?\[\]]/g,'_')||'工作表').slice(0,31);
+  let candidate=base, suffix=2;
+  while(used.has(candidate)){
+    const tail='_'+suffix++;
+    candidate=base.slice(0,31-tail.length)+tail;
+  }
+  used.add(candidate);
+  return candidate;
+}
+
+function multiBuildMergedResult(allSheets){
+  headerRows_raw=null;
   const nh=document.getElementById('multiNoHeader').checked;
   const headerRows=nh?0:Math.max(0,parseInt(document.getElementById('multiHeaderRows').value)||1);
   const headerKeyRowInput=document.getElementById('multiHeaderKeyRow');
@@ -2738,9 +2871,12 @@ function multiMerge(){
     headerRows_raw=[mergedHdr,...headerRows_raw.slice(mergeRows)];
   }
 
-  multiMergedData={headers, rows, headerRows_raw: headerRows_raw||null};
+  return {headers,rows,headerRows_raw:headerRows_raw||null};
+}
 
-  document.getElementById('multiStats').innerHTML=`<div class="stat-item"><div class="stat-value">${allSheets.length}</div><div class="stat-label">工作表</div></div><div class="stat-item"><div class="stat-value">${rows.length}</div><div class="stat-label">合并行数</div></div><div class="stat-item"><div class="stat-value">${headers.length}</div><div class="stat-label">列数</div></div>`;
+function multiRenderMergedPreview(result){
+  const {headers,rows,headerRows_raw}=result;
+  const addSrc=document.getElementById('multiAddSource').checked;
   const pre=rows.slice(0,100);
   let th='<thead>';
   const mergeHdr=document.getElementById('multiMergeHdr').checked;
@@ -2761,9 +2897,27 @@ function multiMerge(){
   pre.forEach(r=>{ th+='<tr>'+r.map(c=>`<td>${esc(fmtCell(c))}</td>`).join('')+'</tr>'; });
   th+='</tbody>';
   document.getElementById('multiPreviewTable').innerHTML=th;
+}
+
+function multiMerge(){
+  const allSheets=[];
+  multiFiles.forEach(f=>{ f.sheets.forEach(sh=>{ if(sh.selected)allSheets.push({fileName:f.relPath||f.name,sheetName:sh.name,data:sh.data}); }); });
+  if(!allSheets.length){ showToast('请选择工作表','error'); return; }
+  const grouped=document.querySelector('input[name="multiOutputMode"]:checked')?.value==='grouped';
+  const groups=grouped?multiGroupSheetsByName(allSheets):[{name:'合并结果',sheets:allSheets}];
+  const usedNames=new Set();
+  const results=groups.map(group=>({
+    name:grouped?multiUniqueSheetName(group.name,usedNames):'合并结果',
+    ...multiBuildMergedResult(group.sheets)
+  }));
+  const first=results[0];
+  multiMergedData={...first,grouped,results};
+  const totalRows=results.reduce((sum,result)=>sum+result.rows.length,0);
+  document.getElementById('multiStats').innerHTML=`<div class="stat-item"><div class="stat-value">${grouped?results.length:allSheets.length}</div><div class="stat-label">${grouped?'汇总表':'工作表'}</div></div><div class="stat-item"><div class="stat-value">${totalRows}</div><div class="stat-label">合并行数</div></div><div class="stat-item"><div class="stat-value">${first.headers.length}</div><div class="stat-label">预览列数</div></div>`;
+  multiRenderMergedPreview(first);
   initColResize();
   document.getElementById('multiResultCard').style.display='';
-  showToast('合并完成！'+rows.length+' 行数据','success');
+  showToast(grouped?'已生成 '+results.length+' 个汇总工作表':'合并完成！'+totalRows+' 行数据','success');
   document.getElementById('multiResultCard').scrollIntoView({behavior:'smooth'});
 }
 
@@ -2771,31 +2925,37 @@ function multiExportXLSX(){
   if(!multiMergedData)return;
   const customName=document.getElementById('multiExportName').value.trim();
   const fileName=customName||'多文件合并结果';
-  const hdr=multiMergedData.headerRows_raw||[multiMergedData.headers];
-  const nCols=hdr[0].length;
-  const ws=XLSX.utils.aoa_to_sheet([...hdr,...multiMergedData.rows]);
-  autoFitCols(ws);
-  // 合并标题行单元格
-  const mergeChk=document.getElementById('multiMergeHdr').checked;
-  const mergeRows=mergeChk?Math.min(parseInt(document.getElementById('multiMergeHdrRows').value)||1,hdr.length):0;
-  const hasSrc=document.getElementById('multiAddSource').checked;
-  if(mergeRows>0 && nCols>1){
-    const mergeStartC=hasSrc?1:0;
-    const mergeEndC=nCols-1;
-    if(mergeStartC<mergeEndC){
-      ws['!merges']=[];
-      for(let ri=0;ri<mergeRows;ri++){
-        ws['!merges'].push({s:{r:ri,c:mergeStartC},e:{r:ri,c:mergeEndC}});
+  const wb=XLSX.utils.book_new();
+  const appendResult=result=>{
+    const hdr=result.headerRows_raw||[result.headers];
+    const nCols=hdr[0].length;
+    const ws=XLSX.utils.aoa_to_sheet([...hdr,...result.rows]);
+    autoFitCols(ws);
+    // 合并标题行单元格
+    const mergeChk=document.getElementById('multiMergeHdr').checked;
+    const mergeRows=mergeChk?Math.min(parseInt(document.getElementById('multiMergeHdrRows').value)||1,hdr.length):0;
+    const hasSrc=document.getElementById('multiAddSource').checked;
+    if(mergeRows>0 && nCols>1){
+      const mergeStartC=hasSrc?1:0;
+      const mergeEndC=nCols-1;
+      if(mergeStartC<mergeEndC){
+        ws['!merges']=[];
+        for(let ri=0;ri<mergeRows;ri++){
+          ws['!merges'].push({s:{r:ri,c:mergeStartC},e:{r:ri,c:mergeEndC}});
+        }
+        centerMergedCells(ws, ws['!merges']);
       }
-      centerMergedCells(ws, ws['!merges']);
     }
-  }
-  const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,'合并结果');
+    XLSX.utils.book_append_sheet(wb,ws,result.name);
+  };
+  if(multiMergedData.grouped)multiMergedData.results.forEach(appendResult);
+  else appendResult(multiMergedData);
   XLSX.writeFile(wb,fileName+'.xlsx',{cellStyles:true});
   showToast('已导出 Excel','success');
 }
 function multiExportCSV(){
   if(!multiMergedData)return;
+  if(multiMergedData.grouped){ showToast('CSV 不支持多个工作表，请导出 Excel','info'); return; }
   const customName=document.getElementById('multiExportName').value.trim();
   const fileName=customName||'多文件合并结果';
   const BOM='\uFEFF';
@@ -3604,8 +3764,10 @@ function pdfSplitAllTextItems(textContent, viewport){
 // 只认强标题词，避开印章里的"…电子回单专用章"等；相距很近的去重。
 function pdfSplitReceiptTitleRows(pageItems, pageH){
   const rowObjs=[];
+  // 行合并阈值：约 17px（3500px 页面），避免合并上一张回单的底部文字
+  const mergeThresh=Math.max(8,pageH*0.005);
   pageItems.slice().sort((a,b)=>a.y-b.y||a.x-b.x).forEach(it=>{
-    let row=rowObjs.find(r=>Math.abs(r.y-it.y)<Math.max(10,pageH*0.012));
+    let row=rowObjs.find(r=>Math.abs(r.y-it.y)<mergeThresh);
     if(row){
       row.items.push(it);
       row.y=(row.y+it.y)/2;
@@ -3627,8 +3789,9 @@ function pdfSplitReceiptTitleRows(pageItems, pageH){
       return false;
     })
     .sort((a,b)=>a.y-b.y);
+  // 去重：标题行之间至少间隔页高 6%（约 210px）
   const out=[];
-  rows.forEach(r=>{ if(!out.length||r.y-out[out.length-1].y>pageH*0.1) out.push(r); });
+  rows.forEach(r=>{ if(!out.length||r.y-out[out.length-1].y>pageH*0.06) out.push(r); });
   return out;
 }
 function pdfSplitReceiptTitleYs(pageItems, pageH){
@@ -3636,6 +3799,7 @@ function pdfSplitReceiptTitleYs(pageItems, pageH){
 }
 function pdfSplitAdaptiveReceiptCrop(pageItems, pageW, pageH, idx, count, dir){
   let band;
+  let tYs=null; // 标题行纵坐标，用于顶部锚点定位
   if(dir==='horizontal'){
     const w=pageW/count;
     band={x:idx*w,y:0,w,h:pageH};
@@ -3643,7 +3807,7 @@ function pdfSplitAdaptiveReceiptCrop(pageItems, pageW, pageH, idx, count, dir){
     const h=pageH/count;
     band={x:0,y:idx*h,w:pageW,h};
     // 优先按标题行定位：第 idx 张回单 = 从第 idx 个标题到下一个标题（最后一张到页底）
-    const tYs=pdfSplitReceiptTitleYs(pageItems,pageH);
+    tYs=pdfSplitReceiptTitleYs(pageItems,pageH);
     if(tYs.length>=count){
       const top=Math.max(0,tYs[idx]-pageH*0.012);
       const bot=idx<count-1?tYs[idx+1]-pageH*0.006:pageH;
@@ -3681,14 +3845,19 @@ function pdfSplitAdaptiveReceiptCrop(pageItems, pageW, pageH, idx, count, dir){
   let minY=Math.min(...segmentItems.map(it=>it.y));
   let maxY=Math.max(...segmentItems.map(it=>it.y));
 
-  const padTop=pageH*0.045;
-  const padBottom=/重要提示|打印日期|验证码|记账日期|备注|附件/.test(text)?pageH*0.075:pageH*0.055;
-  const top=Math.max(0,minY-padTop);
-  const bottomLimit=nextTitleY!=null?Math.min(pageH,nextTitleY-pageH*0.008):Math.min(pageH,band.y+band.h);
+  // 顶部边界：优先用标题行位置，但绝不能超过等分线（idx*pageH/count）
+  const equalSplitTop=idx*pageH/count;
+  const padTop=pageH*0.015;
+  const top=tYs&&tYs.length>=count&&idx<tYs.length
+    ? Math.max(equalSplitTop,tYs[idx]-pageH*0.012)
+    : Math.max(equalSplitTop,minY-padTop);
+  const padBottom=/重要提示|打印日期|验证码|记账日期|备注|附件/.test(text)?pageH*0.085:pageH*0.065;
+  const bottomLimit=nextTitleY!=null?Math.min(pageH,nextTitleY-pageH*0.003):Math.min(pageH,band.y+band.h);
   const textBottom=maxY+padBottom;
   const bandBottom=Math.min(pageH,band.y+band.h);
+  // 纵向模式下，优先用文字内容底部+padding，避免固定等分截断回单尾部
   const bottom=dir==='vertical'
-    ? bottomLimit
+    ? Math.max(bottomLimit,Math.min(pageH,textBottom))
     : Math.min(bandBottom,textBottom);
   // 横向不按文字收紧：二维码、银行行徽等是图片不算文字，按文字范围裁会把它们截掉。
   // 用整条带的宽度（纵向拆分时即整页宽），保证左右两侧（含二维码）完整。
@@ -3705,33 +3874,32 @@ function pdfSplitAdaptiveReceiptCrop(pageItems, pageW, pageH, idx, count, dir){
 }
 function pdfSplitReceiptCropsForPage(pageItems, pageW, pageH, manualCount, dir){
   const count=Math.max(1,manualCount||1);
+  // 全部使用标题行检测定位（比等分精确，不会多裁少裁）
+  // 标题行识别"客户回单/付款回单/付费回单/电子回单"等关键词
   if(dir==='vertical'){
     const titleRows=pdfSplitReceiptTitleRows(pageItems,pageH);
-    if(titleRows.length&&(!manualCount||titleRows.length>=manualCount)){
+    if(titleRows.length>=count){
       const crops=titleRows.map((row,idx)=>{
-        const rowH=Math.max(10,row.bottom-row.top);
+        // 顶部：用标题行的 top，留极小边距（8px），保证不裁到标题
+        const top=Math.max(0,row.top-pageH*0.002);
+        // 底部：到下一张回单的标题行 top（或页底），留极小边距避免带进下一张
         const nextRow=titleRows[idx+1];
-        const nextRowH=nextRow?Math.max(10,nextRow.bottom-nextRow.top):rowH;
-        const titlePad=Math.max(18,rowH*0.9);
-        const splitPad=Math.max(18,nextRowH*0.8);
-        const top=Math.max(0,row.top-titlePad);
-        const bot=idx<titleRows.length-1?Math.max(top+pageH*0.05,nextRow.top-splitPad):pageH;
+        const bot=nextRow?Math.max(top+pageH*0.05,nextRow.top-pageH*0.002):pageH;
         return {x:0,y:top,w:pageW,h:Math.min(pageH,bot)-top, detected:true};
       }).filter(c=>c.h>pageH*0.05);
-      const expectedH=manualCount>1?pageH/manualCount:(crops.length>1?pageH/crops.length:0);
-      if(expectedH){
-        return crops.map((crop,idx)=>{
-          if(crop.h>=expectedH*0.72)return crop;
-          const y=Math.max(0,Math.min(pageH-expectedH,idx*expectedH));
-          return {x:0,y,w:pageW,h:Math.min(pageH-y,expectedH),detected:false,heightFallback:true};
-        });
-      }
-      return crops;
+      if(crops.length===count) return crops;
     }
   }
+  // 标题行不足或横向排列时，回退到等分
   const crops=[];
   for(let n=0;n<count;n++){
-    crops.push(pdfSplitAdaptiveReceiptCrop(pageItems,pageW,pageH,n,count,dir));
+    if(dir==='vertical'){
+      const h=pageH/count;
+      crops.push({x:0,y:n*h,w:pageW,h,detected:false,equalSplit:true});
+    }else{
+      const w=pageW/count;
+      crops.push({x:n*w,y:0,w,h:pageH,detected:false,equalSplit:true});
+    }
   }
   return crops;
 }
@@ -3914,6 +4082,23 @@ function pdfSplitFindContentBox(canvas){
     w:Math.max(1,Math.min(w-x,maxX-minX+pad*2)),
     h:Math.max(1,Math.min(h-y,maxY-minY+pad*2))
   };
+}
+function pdfSplitIsBlankReceiptCanvas(canvas){
+  const ctx=canvas.getContext('2d',{willReadFrequently:true});
+  const w=canvas.width,h=canvas.height;
+  if(w<10||h<10) return true;
+  const img=ctx.getImageData(0,0,w,h).data;
+  let darkPixels=0;
+  const step=Math.max(1,Math.floor(Math.min(w,h)/300));
+  for(let y=0;y<h;y+=step){
+    for(let x=0;x<w;x+=step){
+      const i=(y*w+x)*4;
+      const gray=(img[i]+img[i+1]+img[i+2])/3;
+      if(gray<240) darkPixels++;
+    }
+  }
+  const total=Math.ceil(h/step)*Math.ceil(w/step);
+  return darkPixels/total<0.003;
 }
 function pdfSplitLinesFromRegion(items, box){
   const inBox=items.filter(it=>it.x>=box.x1&&it.x<=box.x2&&it.y>=box.y1&&it.y<=box.y2);
@@ -4825,7 +5010,7 @@ async function pdfSplitExecute(){
     // ===== 回单模式：渲染页面→裁剪→生成单张PDF =====
     if(!pdfSplitJsDoc){ showToast('PDF.js 未加载，无法执行回单模式','error'); return; }
     const countSel=document.getElementById('pdfSplitReceiptCount');
-    const manualCount=countSel.value==='auto'?0:(countSel.value==='custom'?parseInt(document.getElementById('pdfSplitReceiptCountCustom').value)||3:parseInt(countSel.value)||1);
+    const manualCount=countSel.value==='custom'?parseInt(document.getElementById('pdfSplitReceiptCountCustom').value)||3:parseInt(countSel.value)||1;
     const dir=document.getElementById('pdfSplitReceiptDir').value; // horizontal|vertical
     let receiptGlobalIdx=0;
 
@@ -4857,7 +5042,32 @@ async function pdfSplitExecute(){
       }
 
       for(let n=0;n<receiptCrops.length;n++){
-        const crop=receiptCrops[n];
+        let crop=receiptCrops[n];
+
+        // 标题行检测的 crop 已经精确包含整张回单，跳过图像底部扩展
+        // 等分回退的 crop 需要图像扩展来包含印章等非文字内容
+        if(!crop.detected){
+          // 使用图像分析扩展底部边界，确保包含印章等图片内容（印章是图片不在文字层中）
+          const nextCrop=receiptCrops[n+1];
+          const safeBottom=nextCrop?Math.min(canvas.height,nextCrop.y-canvas.height*0.005):canvas.height;
+          const probePad=Math.min(canvas.height*0.15, 160);
+          const probeMaxH=Math.min(canvas.height-crop.y, crop.h+probePad, safeBottom-crop.y);
+          if(probeMaxH>crop.h+10){
+            const probe=document.createElement('canvas');
+            probe.width=Math.round(crop.w);
+            probe.height=Math.round(probeMaxH);
+            const pctx=probe.getContext('2d',{alpha:false});
+            pctx.fillStyle='#fff'; pctx.fillRect(0,0,probe.width,probe.height);
+            pctx.drawImage(canvas,crop.x,crop.y,crop.w,probeMaxH,0,0,probe.width,probe.height);
+            const box=pdfSplitFindContentBox(probe);
+            const imageBottom=box.y+box.h+canvas.height*0.015;
+            if(imageBottom>crop.h){
+              crop={...crop,h:Math.min(probeMaxH,imageBottom)};
+              receiptCrops[n]=crop;
+            }
+          }
+        }
+
         const sx=crop.x, sy=crop.y, sw=crop.w, sh=crop.h;
         // Create cropped canvas
         const cc=document.createElement('canvas');
@@ -4882,8 +5092,13 @@ async function pdfSplitExecute(){
         const imgPage=subDoc.addPage([exportCanvas.width,exportCanvas.height]);
         imgPage.drawImage(embeddedImg,{x:0,y:0,width:exportCanvas.width,height:exportCanvas.height});
 
+        // 跳过纯空白页：内容极少则不纳入结果
+        if(pdfSplitIsBlankReceiptCanvas(exportCanvas)){
+          console.log('[回单拆分] 跳过空白页，页码=',pn,'序号=',n);
+          continue;
+        }
         const baseName=pdfSplitBuildReceiptBaseName(fields,receiptGlobalIdx);
-        pdfSplitResults.push({name:baseName+'.pdf', baseName, bytes:await subDoc.save(), pageNum:pn, receiptIdx:n, receiptCount:receiptCrops.length, imgUrl:imgData, fields});
+        pdfSplitResults.push({name:baseName+'.pdf', baseName, bytes:await subDoc.save(), pageNum:pn, receiptIdx:n, receiptCount:receiptCrops.length, imgUrl:imgData, fields, crop:{x:sx,y:sy,w:sw,h:sh}});
         receiptGlobalIdx++;
       }
     }
@@ -4952,6 +5167,7 @@ function pdfSplitRenderResults(mode){
     const thumbContent=mode==='receipt'&&r.imgUrl
       ? `<img src="${r.imgUrl}" style="width:100%;height:100%;object-fit:contain;background:#fff;display:block;">`
       : `<iframe src="${url}#toolbar=0&navpanes=0" style="position:absolute;top:0;left:0;width:340px;height:490px;border:none;pointer-events:none;transform:scale(0.324);transform-origin:top left;z-index:1;"></iframe>`;
+    const adjustBtn=mode==='receipt'&&r.crop?`<button class="btn btn-outline" onclick="event.stopPropagation();pdfSplitOpenCropAdjust(${i})" title="在原页重新调整裁剪区域" style="font-size:11px;padding:3px 8px;margin-top:4px;width:110px;">✂️ 调整裁剪</button>`:'';
     thumbs+=`<div style="width:110px;text-align:center;flex-shrink:0;">
       <div style="width:110px;height:140px;border:1px solid var(--gray-200);border-radius:6px;overflow:hidden;position:relative;background:var(--gray-100);line-height:0;">
         ${thumbContent}
@@ -4959,6 +5175,7 @@ function pdfSplitRenderResults(mode){
       </div>
       ${nameField}
       ${meta}
+      ${adjustBtn}
     </div>`;
   });
   const previewThumbs=document.getElementById('pdfSplitPreviewThumbs');
@@ -4977,6 +5194,167 @@ function pdfSplitDataUrlToBytes(dataUrl){
   for(let i=0;i<bin.length;i++)bytes[i]=bin.charCodeAt(i);
   return bytes;
 }
+
+// ===== 回单裁剪调整 =====
+let __cropAdjustIdx=null, __cropAdjustPageNum=null, __cropAdjustScale=1, __cropAdjustImgH=0;
+let __cropAdjustNewY=0, __cropAdjustNewH=0, __cropAdjustOriginalH=0;
+
+async function pdfSplitOpenCropAdjust(idx){
+  const r=pdfSplitResults[idx];
+  if(!r||!r.crop||!pdfSplitJsDoc){ showToast('无法调整：缺少裁剪信息或PDF未加载','error'); return; }
+  __cropAdjustIdx=idx;
+  __cropAdjustPageNum=r.pageNum;
+  __cropAdjustNewY=r.crop.y;
+  __cropAdjustNewH=r.crop.h;
+  __cropAdjustOriginalH=r.crop.h;
+
+  const page=await pdfSplitJsDoc.getPage(r.pageNum);
+  const scale=2.0;
+  const vp=page.getViewport({scale});
+  __cropAdjustScale=scale;
+  const canvas=document.createElement('canvas');
+  canvas.width=Math.round(vp.width);
+  canvas.height=Math.round(vp.height);
+  const ctx=canvas.getContext('2d',{alpha:false});
+  ctx.fillStyle='#fff'; ctx.fillRect(0,0,canvas.width,canvas.height);
+  await page.render({canvasContext:ctx,viewport:vp}).promise;
+
+  const img=document.getElementById('cropAdjustImg');
+  img.src=canvas.toDataURL('image/jpeg',0.85);
+  img.style.display='';
+  __cropAdjustImgH=canvas.height;
+
+  img.onload=()=>{ pdfSplitUpdateCropAdjustLines(); };
+  if(img.complete) pdfSplitUpdateCropAdjustLines();
+
+  document.getElementById('cropAdjustModal').classList.add('show');
+  pdfSplitBindCropAdjustDrag();
+}
+function pdfSplitCloseCropAdjust(event){
+  if(event&&event.target&&event.target.id!=='cropAdjustModal') return;
+  document.getElementById('cropAdjustModal').classList.remove('show');
+  __cropAdjustIdx=null;
+}
+function pdfSplitUpdateCropAdjustLines(){
+  const img=document.getElementById('cropAdjustImg');
+  const wrap=document.getElementById('cropAdjustCanvasWrap');
+  if(!img||!wrap||!__cropAdjustImgH) return;
+  const displayedH=img.clientHeight;
+  const ratio=displayedH/__cropAdjustImgH;
+  const topLine=document.getElementById('cropAdjustTopLine');
+  const bottomLine=document.getElementById('cropAdjustBottomLine');
+  topLine.style.top=(__cropAdjustNewY*ratio)+'px';
+  bottomLine.style.bottom=(((__cropAdjustImgH-__cropAdjustNewY-__cropAdjustNewH))*ratio)+'px';
+}
+function pdfSplitBindCropAdjustDrag(){
+  const wrap=document.getElementById('cropAdjustCanvasWrap');
+  const topLine=document.getElementById('cropAdjustTopLine');
+  const bottomLine=document.getElementById('cropAdjustBottomLine');
+  let dragging=null, startY=0, startVal=0;
+
+  const onDown=(e,lineType)=>{
+    e.preventDefault(); e.stopPropagation();
+    dragging=lineType;
+    startY=(e.touches?e.touches[0]:e).clientY;
+    startVal=lineType==='top'?__cropAdjustNewY:(__cropAdjustNewY+__cropAdjustNewH);
+  };
+  const onMove=(e)=>{
+    if(!dragging) return;
+    const clientY=(e.touches?e.touches[0]:e).clientY;
+    const img=document.getElementById('cropAdjustImg');
+    const rect=img.getBoundingClientRect();
+    const ratio=__cropAdjustImgH/img.clientHeight;
+    let dy=(clientY-startY)*ratio;
+    let newVal=startVal+dy;
+    newVal=Math.max(0,Math.min(__cropAdjustImgH,newVal));
+    if(dragging==='top'){
+      if(newVal>=__cropAdjustNewY+__cropAdjustNewH-20) newVal=__cropAdjustNewY+__cropAdjustNewH-20;
+      __cropAdjustNewH=__cropAdjustNewY+__cropAdjustNewH-newVal;
+      __cropAdjustNewY=newVal;
+    }else{
+      if(newVal<=__cropAdjustNewY+20) newVal=__cropAdjustNewY+20;
+      __cropAdjustNewH=newVal-__cropAdjustNewY;
+    }
+    pdfSplitUpdateCropAdjustLines();
+  };
+  const onUp=()=>{ dragging=null; };
+
+  topLine.onmousedown=(e)=>onDown(e,'top');
+  topLine.ontouchstart=(e)=>onDown(e,'top');
+  bottomLine.onmousedown=(e)=>onDown(e,'bottom');
+  bottomLine.ontouchstart=(e)=>onDown(e,'bottom');
+  document.addEventListener('mousemove',onMove);
+  document.addEventListener('mouseup',onUp);
+  document.addEventListener('touchmove',onMove,{passive:false});
+  document.addEventListener('touchend',onUp);
+
+  // 防止重复绑定：把旧监听器存到元素上，关闭时移除
+  wrap.__cropAdjustCleanup=()=>{
+    document.removeEventListener('mousemove',onMove);
+    document.removeEventListener('mouseup',onUp);
+    document.removeEventListener('touchmove',onMove);
+    document.removeEventListener('touchend',onUp);
+  };
+}
+async function pdfSplitConfirmCropAdjust(){
+  if(__cropAdjustIdx==null) return;
+  const idx=__cropAdjustIdx;
+  const r=pdfSplitResults[idx];
+  if(!r) return;
+  showToast('正在重新裁剪识别…','info');
+  try{
+    const page=await pdfSplitJsDoc.getPage(__cropAdjustPageNum);
+    const vp=page.getViewport({scale:__cropAdjustScale});
+    const canvas=document.createElement('canvas');
+    canvas.width=Math.round(vp.width); canvas.height=Math.round(vp.height);
+    const ctx=canvas.getContext('2d',{alpha:false});
+    ctx.fillStyle='#fff'; ctx.fillRect(0,0,canvas.width,canvas.height);
+    await page.render({canvasContext:ctx,viewport:vp}).promise;
+
+    const textContent=await page.getTextContent().catch(()=>({items:[]}));
+    const sx=0, sy=Math.round(__cropAdjustNewY), sw=Math.round(vp.width), sh=Math.round(__cropAdjustNewH);
+    const cc=document.createElement('canvas');
+    cc.width=sw; cc.height=sh;
+    const cctx=cc.getContext('2d');
+    cctx.drawImage(canvas,sx,sy,sw,sh,0,0,cc.width,cc.height);
+
+    const crop={x:sx,y:sy,w:sw,h:sh};
+    const cropLines=pdfSplitTextItemsToLines(textContent,vp,crop);
+    const cropItems=pdfSplitTextItemsInCrop(textContent,vp,crop);
+    const layoutFields=pdfSplitExtractReceiptFieldsByLayout(cropItems,sw,sh);
+    const fields=await pdfSplitOcrReceiptCanvas(cc,cropLines,layoutFields);
+
+    const imgData=cc.toDataURL('image/jpeg',0.9);
+    const imgBytes=await fetch(imgData).then(r=>r.arrayBuffer());
+    const subDoc=await PDFLib.PDFDocument.create();
+    let embeddedImg;
+    try{ embeddedImg=await subDoc.embedJpg(imgBytes); }
+    catch{ embeddedImg=await subDoc.embedPng(imgBytes); }
+    const imgPage=subDoc.addPage([cc.width,cc.height]);
+    imgPage.drawImage(embeddedImg,{x:0,y:0,width:cc.width,height:cc.height});
+
+    const baseName=pdfSplitBuildReceiptBaseName(fields,idx);
+    pdfSplitResults[idx]={
+      name:baseName+'.pdf',
+      baseName,
+      bytes:await subDoc.save(),
+      pageNum:r.pageNum,
+      receiptIdx:r.receiptIdx,
+      receiptCount:r.receiptCount,
+      imgUrl:imgData,
+      fields,
+      crop
+    };
+    pdfSplitFinalizeReceiptNames(pdfSplitResults);
+    pdfSplitRenderResults('receipt');
+    showToast('重新裁剪识别完成','success');
+    pdfSplitCloseCropAdjust();
+  }catch(e){
+    showToast('重新裁剪失败：'+e.message,'error');
+    console.error(e);
+  }
+}
+
 async function pdfSplitRenderPageToJpgBytes(pageNum){
   if(!pdfSplitJsDoc)throw new Error('PDF.js 未加载，无法导出 JPG');
   const page=await pdfSplitJsDoc.getPage(pageNum);
