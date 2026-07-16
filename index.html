@@ -1940,6 +1940,16 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     </div>
     <div class="changelog-body">
       <div class="changelog-entry">
+        <div class="changelog-date">2026-07-16</div>
+        <ul>
+          <li>多文件合并新增"按同名 Sheet 分开"输出模式。</li>
+          <li>PDF 回单模式移除"自动识别"，改为用户手动选择每页回单数（默认 2 张）。</li>
+          <li>回单拆分结果支持"调整裁剪"：可在原页预览中拖动红线重新定位裁剪边界。</li>
+          <li>自动跳过纯空白回单页。</li>
+          <li>重写回单裁剪逻辑：用标题行精确定位上下边界，修复前几张回单被多裁的问题。</li>
+        </ul>
+      </div>
+      <div class="changelog-entry">
         <div class="changelog-date">2026-06-30</div>
         <ul>
           <li>PDF 回单模式改为本地 PaddleOCR.js 适配层，移除 Tesseract 在线 CDN 自动加载。</li>
