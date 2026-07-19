@@ -2091,7 +2091,7 @@ function showHome() {
   document.getElementById('page-rename').style.display = 'none';
   if(document.getElementById('page-flist')) document.getElementById('page-flist').style.display = 'none';
   if(typeof flClear==='function') flClear();
-  renameFiles = []; renameCurrentNames = []; renameHistory = []; renameRedoStack = []; renameManualNames = {}; renameMap = null;
+  renameFiles = []; renameCurrentNames = []; renameHistory = []; renameRedoStack = []; renameManualNames = {}; renameMap = null; renameListExpanded = false;
   if(document.getElementById('renameFileList')) document.getElementById('renameFileList').innerHTML='';
   if(document.getElementById('renameOptionsCard')) document.getElementById('renameOptionsCard').style.display='none';
   if(document.getElementById('renamePreviewCard')) document.getElementById('renamePreviewCard').style.display='none';
@@ -2100,6 +2100,8 @@ function showHome() {
   // Reset multi-file state
   multiFiles = [];
   multiMergedData = null;
+  multiListExpanded = false;
+  multiSheetExpanded = false;
   document.getElementById('multiFileList').innerHTML = '';
   document.getElementById('multiSheetCard').style.display = 'none';
   document.getElementById('multiOptionsCard').style.display = 'none';
@@ -2599,6 +2601,7 @@ async function multiHandleFiles(files, isFolder){
   }
   const fileList=Array.from(files||[]);
   if(!fileList.length)return;
+  multiListExpanded=false;
   multiIsReading=true;
   const keepFmt = document.getElementById('multiKeepFmt').checked;
   let dupCount=0, skipCount=0, failCount=0, readCount=0;
@@ -3219,6 +3222,8 @@ function multiReset(){
   multiFiles=[];
   multiMergedData=null;
   headerRows_raw=null;
+  multiListExpanded=false;
+  multiSheetExpanded=false;
   multiSearchFilter='';
   multiNameBtnClicked=false;
   document.getElementById('multiFileSearch').value='';
@@ -3505,6 +3510,7 @@ async function pdfHandleDrop(items){
 }
 
 async function pdfHandleFiles(files) {
+  pdfListExpanded = false;
   for (let i = 0; i < files.length; i++) {
     const f = files[i];
     if (!/\.pdf$/i.test(f.name)) continue;
@@ -6622,15 +6628,17 @@ var renameManualNames = {};
 var renameMap = null;
 var renameHasPending = false;
 var renameSearchFilter = '';
+var renameListExpanded = false;
 function renameUpdateMode(){
   var m=document.querySelector('input[name="renameMode"]:checked').value;
   document.getElementById('renameRuleOpts').style.display = m==='rule'?'':'none';
   document.getElementById('renameMapOpts').style.display = m==='map'?'':'none';
   renameMarkPending();
 }
-function renameAddFiles(list){ renameRedoStack=[]; renameHasPending=false; for(var i=0;i<list.length;i++){ renameFiles.push(list[i]); renameCurrentNames.push(list[i].name); }
+function renameAddFiles(list){ renameRedoStack=[]; renameHasPending=false; renameListExpanded=false; for(var i=0;i<list.length;i++){ renameFiles.push(list[i]); renameCurrentNames.push(list[i].name); }
   renameRenderList(); document.getElementById('renameOptionsCard').style.display = renameFiles.length?'':'none'; renamePreview(); }
 function renameRenderList(){ var el=document.getElementById('renameFileList');
+  var MAX=5;
   var filter=renameSearchFilter||'';
   var visible=[];
   renameFiles.forEach(function(f,i){
@@ -6638,10 +6646,14 @@ function renameRenderList(){ var el=document.getElementById('renameFileList');
     if(!filter || f.name.toLowerCase().includes(filter) || String(current).toLowerCase().includes(filter)) visible.push({f:f,i:i,current:current});
   });
   if(renameFiles.length){
+    var showAll=renameListExpanded||visible.length<=MAX;
+    var rendered=showAll?visible:visible.slice(0,MAX);
     var html='<div style="font-size:13px;color:var(--gray-600);margin-bottom:8px;">已选 '+renameFiles.length+' 个文件，已确认 '+renameHistory.length+' 步</div>';
-    html += visible.map(function(v){
+    html += rendered.map(function(v){
       return '<div class="file-list-item"><div class="file-icon-sm">FILE</div><div class="file-info"><div class="file-name-sm" title="'+renameAttrEsc(v.f.name)+'">'+renameEsc(v.f.name)+'</div><div class="file-meta-sm">已确认名：'+renameEsc(v.current)+'</div></div><button class="btn-remove" onclick="renameRemoveFile('+v.i+')" title="删除这个文件">✕</button></div>';
     }).join('');
+    if(!showAll) html+='<div class="file-list-expand"><button class="file-list-expand-btn" onclick="renameToggleExpand()">展开全部 '+visible.length+' 个文件 ▼</button></div>';
+    else if(visible.length>MAX) html+='<div class="file-list-expand"><button class="file-list-expand-btn" onclick="renameToggleExpand()">收起 ▲</button></div>';
     el.innerHTML=html;
   }else{
     el.innerHTML='';
@@ -6652,6 +6664,7 @@ function renameRenderList(){ var el=document.getElementById('renameFileList');
   setUploadClearVisible('renameClearBtn', renameFiles.length>0);
   renameRenderStepInfo();
 }
+function renameToggleExpand(){ renameListExpanded=!renameListExpanded; renameRenderList(); }
 function renameFileSearch(val){ renameSearchFilter=String(val||'').trim().toLowerCase(); renameRenderList(); }
 function renameRemoveFiltered(){
   var filter=renameSearchFilter||'';
@@ -6703,7 +6716,7 @@ function renameRemoveFile(i){
   renamePreview();
   showToast('已删除这个文件','success');
 }
-function renameClear(){ renameFiles=[]; renameCurrentNames=[]; renameHistory=[]; renameRedoStack=[]; renameManualNames={}; renameMap=null; renameHasPending=false; renameSearchFilter='';
+function renameClear(){ renameFiles=[]; renameCurrentNames=[]; renameHistory=[]; renameRedoStack=[]; renameManualNames={}; renameMap=null; renameHasPending=false; renameSearchFilter=''; renameListExpanded=false;
   var rs=document.getElementById('renameFileSearch'); if(rs)rs.value=''; renameRenderList(); renameResetRuleInputs();
   var mapInfo=document.getElementById('renameMapInfo'); if(mapInfo) mapInfo.textContent='';
   var ri=document.getElementById('renameInput'); if(ri) ri.value='';
@@ -6932,6 +6945,7 @@ function flMakeEntry(f){
   return { file:f, name:f.name, rel:rel, size:f.size, fromFolder:fromFolder };
 }
 function flHandleFiles(files){
+  flListExpanded=false;
   var dup=0, added=0;
   for(var i=0;i<files.length;i++){
     var e=flMakeEntry(files[i]);
