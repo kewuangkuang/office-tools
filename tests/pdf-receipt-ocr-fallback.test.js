@@ -109,6 +109,38 @@ function loadFixedPreference(html) {
   return context.api;
 }
 
+function renderPdfSplitResults(html, mode) {
+  const start = html.indexOf('function pdfSplitCurrentExportFormat(');
+  const end = html.indexOf('\nfunction pdfSplitDataUrlToBytes(', start);
+  assert.ok(start >= 0 && end > start, 'PDF split export renderer should exist');
+  const formatInputs = {
+    pdf: { value: 'pdf', checked: false },
+    jpg: { value: 'jpg', checked: false }
+  };
+  const elements = {
+    pdfSplitExportName: { placeholder: '' },
+    pdfSplitPreviewThumbs: { innerHTML: '', style: {} },
+    pdfSplitResultStats: { innerHTML: '' }
+  };
+  const document = {
+    getElementById(id) {
+      return elements[id] || null;
+    },
+    querySelector(selector) {
+      if (selector === 'input[name="pdfSplitMode"]:checked') return { value: mode };
+      if (selector === 'input[name="pdfSplitExportFormat"]:checked') {
+        return Object.values(formatInputs).find(input => input.checked) || null;
+      }
+      const match = selector.match(/input\[name="pdfSplitExportFormat"\]\[value="(pdf|jpg)"\]/);
+      return match ? formatInputs[match[1]] : null;
+    }
+  };
+  const context = { document, pdfSplitResults: [], URL, Blob };
+  vm.createContext(context);
+  vm.runInContext(`${html.slice(start, end)}\npdfSplitRenderResults(${JSON.stringify(mode)});`, context);
+  return { formatInputs, elements };
+}
+
 test('required OCR fields follow the selected receipt naming mode', () => {
   const { pdfSplitRequiredReceiptFields: required } = loadPureHelpers(source());
   assert.deepEqual(Array.from(required('amount', '')), ['amount']);
@@ -353,6 +385,12 @@ test('receipt result preview does not clip party fields below the thumbnail row'
   const renderer = source().slice(source().indexOf('function pdfSplitRenderResults'), source().indexOf('function pdfSplitDataUrlToBytes'));
   assert.match(renderer, /previewThumbs\.style\.maxHeight=isReceiptLike\?'none':'300px'/, 'receipt-like modes expand the result area for field metadata');
   assert.match(renderer, /previewThumbs\.style\.overflowY=isReceiptLike\?'visible':'auto'/, 'receipt metadata remains visible instead of scrolling under the export controls');
+});
+
+test('receipt results default to JPG image export', () => {
+  const { formatInputs, elements } = renderPdfSplitResults(source(), 'receipt');
+  assert.equal(formatInputs.jpg.checked, true);
+  assert.equal(elements.pdfSplitExportName.placeholder, 'JPG 文件名');
 });
 
 test('canonical entry sends the original receipt crop to OCR so small party labels survive', () => {

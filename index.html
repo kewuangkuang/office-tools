@@ -5500,7 +5500,8 @@ function pdfSplitRenderResults(mode){
   previewThumbs.style.maxHeight=isReceiptLike?'none':'300px';
   previewThumbs.style.overflowY=isReceiptLike?'visible':'auto';
   document.getElementById('pdfSplitResultStats').innerHTML=`<div class="stat-item"><div class="stat-value">${pdfSplitResults.length}</div><div class="stat-label">拆分文件数</div></div>`;
-  document.querySelector('input[name="pdfSplitExportFormat"][value="pdf"]').checked=true;
+  const defaultFormat=mode==='receipt'?'jpg':'pdf';
+  document.querySelector(`input[name="pdfSplitExportFormat"][value="${defaultFormat}"]`).checked=true;
   pdfSplitUpdateExportFormat();
 }
 function pdfSplitDataUrlToBytes(dataUrl){
