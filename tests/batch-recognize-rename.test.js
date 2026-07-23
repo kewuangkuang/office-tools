@@ -58,18 +58,37 @@ test('batch recognize rename accepts pasted files only while its page is active'
   assert.match(html, /拖拽、粘贴或点击选择文件/);
 });
 
-test('template selection is stored as normalized coordinates and reused for every file', () => {
+test('up to five normalized template boxes can be managed and reused for every file', () => {
   assert.match(html, /id="batchRecognizeTemplateSelect"/);
   assert.match(html, /onchange="batchRecognizeChooseTemplate\(this\.value\)"/);
+  assert.match(html, /id="batchRecognizeAddFieldBtn"/);
+  assert.match(html, /id="batchRecognizeFieldList"/);
+  assert.match(html, /function batchRecognizeAddTemplate\(/);
+  assert.match(html, /function batchRecognizeMoveTemplate\(/);
+  assert.match(html, /function batchRecognizeDeleteTemplate\(/);
   assert.match(html, /batchRecognizeTemplateIndex/);
   assert.match(html, /loadIndex=batchRecognizeTemplateIndex/);
   assert.match(html, /batchRecognizeFiles\[loadIndex\]/);
-  assert.match(html, /batchRecognizeTemplate\s*=\s*\{\s*x:/);
-  assert.match(html, /batchRecognizeCropCanvas\(sourceCanvas,\s*batchRecognizeTemplate\)/);
+  assert.match(html, /batchRecognizeTemplates\s*=\s*\[\]/);
+  assert.match(html, /batchRecognizeTemplates\.length>=5/);
+  assert.match(html, /batchRecognizeTemplates\[j\]/);
+  assert.match(html, /batchRecognizeCropCanvas\(sourceCanvas,\s*batchRecognizeTemplates\[j\]\)/);
   assert.match(html, /i===batchRecognizeTemplateIndex/);
   assert.match(html, /pointerdown/);
   assert.match(html, /pointermove/);
   assert.match(html, /pointerup/);
+});
+
+test('recognized fields are combined in box order with the selected separator', () => {
+  assert.match(html, /id="batchRecognizeSeparator"/);
+  const start = html.indexOf('function batchRecognizeJoinTexts(');
+  const end = html.indexOf('\nfunction batchRecognizeSafeBase(', start);
+  assert.ok(start >= 0 && end > start, 'field join helper should exist');
+  const context = {};
+  vm.createContext(context);
+  vm.runInContext(`${html.slice(start, end)}\nthis.fn=batchRecognizeJoinTexts;`, context);
+  assert.equal(context.fn(['成都杏林', '2026年06月'], '_'), '成都杏林_2026年06月');
+  assert.equal(context.fn(['成都杏林', '', '金牛店'], '-'), '成都杏林-金牛店');
 });
 
 test('recognized text becomes safe unique names while preserving extensions', () => {
