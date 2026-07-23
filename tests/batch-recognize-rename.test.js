@@ -40,8 +40,10 @@ test('OCR keeps normal phone-photo resolution and enlarges narrow text crops', (
   const huge = Array.from(context.api.batchRecognizeFitSourceSize(12000, 9000));
   assert.ok(Math.max(...huge) <= 5000);
   assert.ok(huge[0] * huge[1] <= 24000000);
-  assert.ok(context.api.batchRecognizeCropScale(800, 120) >= 2.5);
-  assert.ok(context.api.batchRecognizeCropScale(800, 120) <= 4);
+  assert.ok(context.api.batchRecognizeCropScale(800, 120) >= 3.5);
+  assert.ok(context.api.batchRecognizeCropScale(800, 120) <= 5);
+  assert.match(html, /function batchRecognizeEnhanceCanvas\(/);
+  assert.match(html, /batchRecognizeEnhanceCanvas\(crop\)/);
 });
 
 test('batch recognize rename accepts pasted files only while its page is active', () => {
@@ -102,6 +104,10 @@ test('result table supports one-click text replacement across all new names', ()
     Array.from(context.fn(['成都公司金牛店', '成都公司武侯店'], '成都公司', '')),
     ['金牛店', '武侯店']
   );
+  assert.deepEqual(
+    Array.from(context.fn(['成都木林大药房', '四川杏林药店'], '*林', '成都杏林')),
+    ['成都杏林大药房', '成都杏林药店']
+  );
 });
 
 test('every original filename has a clickable image or PDF preview', () => {
@@ -112,21 +118,10 @@ test('every original filename has a clickable image or PDF preview', () => {
   assert.match(html, /id="batchRecognizePreviewImage"/);
 });
 
-test('preview independently recognizes the full original page for selectable copy text', () => {
-  assert.match(html, /id="batchRecognizePreviewText"/);
-  assert.match(html, /onclick="batchRecognizeOcrPreview\(\)"/);
-  assert.match(html, /function batchRecognizeOcrPreview\(/);
-  assert.match(html, /batchRecognizeRenderSource\(result\.file\)/);
-  assert.match(html, /batchRecognizeOcrFullPage\(sourceCanvas\)/);
-  assert.match(html, /onclick="batchRecognizeCopyPreviewText\(\)"/);
-  assert.match(html, /function batchRecognizeCopyPreviewText\(/);
-  assert.match(html, /navigator\.clipboard\.writeText/);
-  assert.match(html, /field\.value\.slice\(field\.selectionStart,field\.selectionEnd\)/);
-  assert.match(html, /field\.setSelectionRange\(/);
-  assert.doesNotMatch(
-    html,
-    /getElementById\('batchRecognizePreviewText'\)\.value\s*=\s*result\.text/
-  );
+test('file preview stays image-only without a second full-page OCR action', () => {
+  assert.doesNotMatch(html, /id="batchRecognizePreviewText"/);
+  assert.doesNotMatch(html, /batchRecognizeOcrPreview/);
+  assert.doesNotMatch(html, /batchRecognizeOcrFullPage/);
 });
 
 test('download packages the original local files without uploading them', () => {
