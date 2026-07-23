@@ -112,6 +112,23 @@ test('every original filename has a clickable image or PDF preview', () => {
   assert.match(html, /id="batchRecognizePreviewImage"/);
 });
 
+test('preview independently recognizes the full original page for selectable copy text', () => {
+  assert.match(html, /id="batchRecognizePreviewText"/);
+  assert.match(html, /onclick="batchRecognizeOcrPreview\(\)"/);
+  assert.match(html, /function batchRecognizeOcrPreview\(/);
+  assert.match(html, /batchRecognizeRenderSource\(result\.file\)/);
+  assert.match(html, /batchRecognizeOcrFullPage\(sourceCanvas\)/);
+  assert.match(html, /onclick="batchRecognizeCopyPreviewText\(\)"/);
+  assert.match(html, /function batchRecognizeCopyPreviewText\(/);
+  assert.match(html, /navigator\.clipboard\.writeText/);
+  assert.match(html, /field\.value\.slice\(field\.selectionStart,field\.selectionEnd\)/);
+  assert.match(html, /field\.setSelectionRange\(/);
+  assert.doesNotMatch(
+    html,
+    /getElementById\('batchRecognizePreviewText'\)\.value\s*=\s*result\.text/
+  );
+});
+
 test('download packages the original local files without uploading them', () => {
   const start = html.indexOf('/* ===== 批量识别命名 ===== */');
   const end = html.indexOf('// ==========================================', start);
