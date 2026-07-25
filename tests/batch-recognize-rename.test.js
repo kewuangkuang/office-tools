@@ -22,6 +22,51 @@ test('batch recognize rename accepts PDFs and common image formats', () => {
   assert.match(html, /pdfjsLib\.getDocument/);
 });
 
+test('PDF recognition checks the selected text layer before browser OCR', () => {
+  assert.match(html, /canvas\.__batchRecognizePdfTextItems=pdfSplitAllTextItems\(textContent,viewport\)/);
+  assert.match(html, /function batchRecognizeTextLayerText\(/);
+  const start = html.indexOf('async function batchRecognizeStart()');
+  const end = html.indexOf('\nfunction batchRecognizeJoinTexts(', start);
+  const source = html.slice(start, end);
+  const textLayer = source.indexOf('batchRecognizeTextLayerText(sourceCanvas,batchRecognizeTemplates[j])');
+  const imageOcr = source.indexOf('batchRecognizeOcr(crop,enhanced)');
+  assert.ok(textLayer >= 0, 'selected PDF text layer should be read');
+  assert.ok(imageOcr > textLayer, 'image OCR should only follow an empty text-layer result');
+});
+
+test('image recognition uses browser PaddleOCR before Tesseract and records the source', () => {
+  const start = html.indexOf('async function batchRecognizeOcr(crop,enhanced)');
+  const end = html.indexOf('\nasync function batchRecognizeStart()', start);
+  const source = html.slice(start, end);
+  const paddle = source.indexOf('pdfSplitRunPaddleOcr(crop)');
+  const tesseract = source.indexOf('pdfSplitRunTesseractOcr(enhanced||crop');
+  assert.ok(paddle >= 0, 'PaddleOCR should be attempted');
+  assert.ok(tesseract > paddle, 'Tesseract should remain the final fallback');
+  assert.match(html, /sources:allSources\[i\]/);
+  assert.match(html, /\['\+renameEsc\(source\)\+'\]/);
+});
+
+test('browser PaddleOCR needs no credentials or local proxy', () => {
+  assert.match(html, /@paddleocr\/paddleocr-js@0\.4\.2\/\+esm/);
+  assert.match(html, /onnxruntime-web@1\.22\.0\/dist/);
+  assert.match(html, /ocrVersion:'PP-OCRv5'/);
+  assert.match(html, /lang:'ch'/);
+  assert.match(html, /backend:'wasm'/);
+  assert.match(html, /textDetectionModelAsset:\{url:'\.\/ocr-models\/PP-OCRv5_mobile_det_onnx_infer\.tar'\}/);
+  assert.match(html, /textRecognitionModelAsset:\{url:'\.\/ocr-models\/PP-OCRv5_mobile_rec_onnx_infer\.tar'\}/);
+  assert.doesNotMatch(html, /baiduOcr|BAIDU_OCR|百度 OCR 设置|Secret Key|API Key|启动百度OCR服务\.command/);
+});
+
+test('failed PaddleOCR initialization is cached so a batch falls back only once', () => {
+  const start = html.indexOf('async function ensurePaddleOcrLoaded()');
+  const end = html.indexOf('\nfunction pdfSplitPaddlePolyToBbox(', start);
+  const source = html.slice(start, end);
+  assert.match(source, /paddleOcrUnavailable/);
+  assert.match(source, /if\(paddleOcrUnavailable\)return false/);
+  assert.match(source, /paddleOcrUnavailable=true/);
+  assert.doesNotMatch(source, /paddleOcrInitPromise=null/);
+});
+
 test('OCR keeps normal phone-photo resolution and enlarges narrow text crops', () => {
   const fitStart = html.indexOf('function batchRecognizeFitSourceSize(');
   const fitEnd = html.indexOf('\nasync function batchRecognizeRenderSource(', fitStart);
@@ -143,11 +188,11 @@ test('file preview stays image-only without a second full-page OCR action', () =
   assert.doesNotMatch(html, /batchRecognizeOcrFullPage/);
 });
 
-test('download packages the original local files without uploading them', () => {
+test('download still packages the original files after OCR naming', () => {
   const start = html.indexOf('/* ===== 批量识别命名 ===== */');
   const end = html.indexOf('// ==========================================', start);
   const source = html.slice(start, end);
   assert.match(source, /await f\.arrayBuffer\(\)/);
   assert.match(source, /buildZip\(entries\)/);
-  assert.doesNotMatch(source, /\bfetch\s*\(/);
+  assert.match(source, /pdfSplitRunPaddleOcr\(crop\)/);
 });

@@ -1970,8 +1970,8 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       <div class="toggle-row">
         <div class="toggle-text">拆分方式</div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;">
-          <label style="cursor:pointer;font-size:13px;"><input type="radio" name="pdfSplitMode" value="each" checked onchange="pdfSplitUpdateMode()"> 每页一个文件</label>
-          <label style="cursor:pointer;font-size:13px;margin-left:12px;"><input type="radio" name="pdfSplitMode" value="receipt" onchange="pdfSplitUpdateMode()"> 自动识别回单</label>
+          <label style="cursor:pointer;font-size:13px;"><input type="radio" name="pdfSplitMode" value="each" checked onchange="pdfSplitUpdateMode()"> 一页就是一份，要按页拆开（常用）</label>
+          <label style="cursor:pointer;font-size:13px;margin-left:12px;"><input type="radio" name="pdfSplitMode" value="receipt" onchange="pdfSplitUpdateMode()"> 一页里有多张回单，让系统自动切开</label>
           <label style="cursor:pointer;font-size:13px;margin-left:12px;" title="在一页上框选出单个回单区域，之后所有页面按同样区域切割"><input type="radio" name="pdfSplitMode" value="template" onchange="pdfSplitUpdateMode()"> 模板框选拆分</label>
         </div>
       </div>
@@ -2008,6 +2008,9 @@ https://github.com/nodeca/pako/blob/main/LICENSE
           <input type="text" id="pdfSplitReceiptNameTemplate" value="{收款人}{金额}" placeholder="如：{收款人}{日期}" title="支持：{收款人}、{付款人}、{金额}、{日期}、{流水号}、{序号}" style="min-width:220px;padding:5px 8px;border:1px solid var(--gray-300);border-radius:6px;font-size:13px;display:none;">
         </div>
         <div style="font-size:12px;color:var(--gray-400);margin-top:8px;">自定义命名支持：{收款人}、{付款人}、{金额}、{日期}、{流水号}、{序号}</div>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:10px;padding-top:10px;border-top:1px solid var(--gray-200);">
+          <span style="font-size:12px;color:var(--gray-500);">识别顺序：PDF 文字层 → 本地 PaddleOCR → Tesseract；首次识别会下载模型</span>
+        </div>
       </div>
       <div id="pdfSplitTemplateOptions" style="display:none;margin-top:12px;padding:12px;background:var(--gray-50);border-radius:8px;">
         <div style="font-size:13px;font-weight:600;color:var(--gray-700);margin-bottom:8px;">模板框选设置</div>
@@ -2364,6 +2367,9 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         ① 点击“添加一段要识别的文字”　② 在示范文件上框住姓名、日期等文字　③ 系统会到其他文件的相同位置读取文字。<br>
         例：先框“公司名称”，再框“日期”，可生成“公司名称_日期.pdf”。
       </div>
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px;padding:10px 12px;border:1px solid var(--gray-200);border-radius:9px;background:var(--gray-50);">
+        <span style="font-size:12px;color:var(--gray-500);">PDF：文字层 → 本地 PaddleOCR → Tesseract；图片：本地 PaddleOCR → Tesseract。首次识别会下载模型。</span>
+      </div>
       <div class="recognize-field-toolbar">
         <button type="button" class="btn btn-outline" id="batchRecognizeAddFieldBtn" onclick="batchRecognizeAddTemplate()">＋ 添加一段要识别的文字</button>
         <label for="batchRecognizeSeparator" style="font-size:12px;color:var(--gray-600);font-weight:600;">多段文字之间用什么隔开？</label>
@@ -2710,63 +2716,90 @@ function pdfSplitLoadScript(src){
     document.head.appendChild(s);
   });
 }
-// ===== PaddleOCR（优先识别扫描件/图片型 PDF）=====
+// ===== PaddleOCR.js（浏览器本地识别，文字层之后、Tesseract 之前）=====
+const PADDLE_OCR_MODULE_URL='https://cdn.jsdelivr.net/npm/@paddleocr/paddleocr-js@0.4.2/+esm';
+const PADDLE_OCR_WASM_BASE_URL='https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0/dist/';
 let paddleOcrInitPromise=null;
-function pdfSplitGetPaddleGlobal(){
-  return window.PaddleOCRJS||window.PaddleOCR||window.PaddleOCRSDK||window.paddleOCR||window.paddleocr||null;
-}
+let paddleOcrUnavailable=false;
 async function ensurePaddleOcrLoaded(){
   if(window.__pdfSplitPaddleEngine)return true;
+  if(paddleOcrUnavailable)return false;
   if(paddleOcrInitPromise)return paddleOcrInitPromise;
   paddleOcrInitPromise=(async()=>{
-    let lib=pdfSplitGetPaddleGlobal();
-    if(!lib){
-      const local=['./paddleocr.js','./paddleocr.min.js','./paddleocr/paddleocr.js','./paddleocr/paddleocr.min.js','./ocr/paddleocr.js','./ocr/paddleocr.min.js'];
-      for(const src of local){ try{ await pdfSplitLoadScript(src); lib=pdfSplitGetPaddleGlobal(); if(lib)break; }catch(e){} }
-    }
-    if(!lib){
-      try{
-        await pdfSplitLoadScript('https://cdn.jsdelivr.net/npm/@paddlejs-models/ocr@1.2.4/lib/index.js');
-        if(window.paddlejs&&window.paddlejs.ocr){ await window.paddlejs.ocr.init(); window.__pdfSplitPaddleEngine=window.paddlejs.ocr; return true; }
-      }catch(e){ console.warn('Paddle.js OCR 加载失败',e); }
+    try{
+      const module=await import(PADDLE_OCR_MODULE_URL);
+      if(!module?.PaddleOCR?.create)throw new Error('官方 PaddleOCR.js 模块未提供创建接口');
+      window.__pdfSplitPaddleEngine=await module.PaddleOCR.create({
+        lang:'ch',
+        ocrVersion:'PP-OCRv5',
+        textDetectionModelName:'PP-OCRv5_mobile_det',
+        textDetectionModelAsset:{url:'./ocr-models/PP-OCRv5_mobile_det_onnx_infer.tar'},
+        textRecognitionModelName:'PP-OCRv5_mobile_rec',
+        textRecognitionModelAsset:{url:'./ocr-models/PP-OCRv5_mobile_rec_onnx_infer.tar'},
+        ortOptions:{
+          backend:'wasm',
+          wasmPaths:PADDLE_OCR_WASM_BASE_URL,
+          numThreads:1,
+          simd:true
+        }
+      });
+      return true;
+    }catch(e){
+      console.warn('PaddleOCR.js 初始化失败，将使用 Tesseract',e);
+      paddleOcrUnavailable=true;
       return false;
     }
-    try{
-      const engine=typeof lib.create==='function'
-        ? await lib.create({det:true,rec:true,cls:true,structure:true,layout:true,lang:'ch'})
-        : (typeof lib.init==='function'?await lib.init({det:true,rec:true,cls:true,structure:true,layout:true,lang:'ch'}):lib);
-      window.__pdfSplitPaddleEngine=engine||lib;
-      return true;
-    }catch(e){ console.warn('PaddleOCR.js 初始化失败',e); return false; }
   })();
   return paddleOcrInitPromise;
 }
+function pdfSplitPaddlePolyToBbox(poly){
+  if(!Array.isArray(poly)||!poly.length)return null;
+  const points=poly.map(point=>Array.isArray(point)
+    ? {x:Number(point[0]),y:Number(point[1])}
+    : {x:Number(point?.x),y:Number(point?.y)}
+  ).filter(point=>Number.isFinite(point.x)&&Number.isFinite(point.y));
+  if(!points.length)return null;
+  const xs=points.map(point=>point.x),ys=points.map(point=>point.y);
+  return {x0:Math.min(...xs),y0:Math.min(...ys),x1:Math.max(...xs),y1:Math.max(...ys)};
+}
 function pdfSplitNormalizePaddleResult(raw){
-  const lines=[],blocks=[];
+  const lines=[],blocks=[],words=[];
   const walk=node=>{
     if(node==null)return;
     if(typeof node==='string'){ if(node.trim())lines.push(node.trim()); return; }
     if(Array.isArray(node)){ node.forEach(walk); return; }
     const text=node.text||node.label||node.value||node.words||node.transcription||node.recText||'';
-    if(Array.isArray(text))text.forEach(walk); else if(text)lines.push(String(text).trim());
-    if(node.bbox||node.box||node.rect||node.type)blocks.push(node);
-    const children=node.blocks||node.regions||node.layout||node.children||node.lines||node.ocrResults||node.result;
+    if(Array.isArray(text))text.forEach(walk);
+    else if(text){
+      const clean=String(text).trim();
+      if(clean){
+        lines.push(clean);
+        const bbox=node.bbox||node.box||node.rect||pdfSplitPaddlePolyToBbox(node.poly||node.polygon||node.points);
+        if(bbox)words.push({text:clean,bbox});
+      }
+    }
+    if(node.bbox||node.box||node.rect||node.poly||node.type)blocks.push(node);
+    const children=node.items||node.blocks||node.regions||node.layout||node.children||node.lines||node.ocrResults||node.result;
     if(children)walk(children);
   };
   walk(raw);
-  return {lines:[...new Set(lines.filter(Boolean))],blocks,raw,ok:lines.some(s=>s.replace(/\s/g,'').length>=2)};
+  const unique=[...new Set(lines.filter(Boolean))];
+  return {lines:unique,words,blocks,raw,ok:unique.some(s=>s.replace(/\s/g,'').length>=2),source:'paddle'};
 }
 async function pdfSplitRunPaddleOcr(canvas){
-  if(!await ensurePaddleOcrLoaded())return {lines:[],blocks:[],raw:null,ok:false,error:'PaddleOCR 未加载'};
+  if(!await ensurePaddleOcrLoaded())return {lines:[],words:[],blocks:[],raw:null,ok:false,error:'PaddleOCR 未加载',source:'paddle'};
   const engine=window.__pdfSplitPaddleEngine;
-  const options={layout:true,structure:true,ppStructure:true,splitBlocks:true,lang:'ch',recModel:'chinese_english_number_enhanced',detModel:'PP-OCR',amountPunctuation:'enhanced'};
-  const candidates=[engine?.recognize?.bind(engine),engine?.ocr?.bind(engine),engine?.run?.bind(engine),engine?.detect?.bind(engine)].filter(Boolean);
-  let lastError='PaddleOCR 无可用识别接口';
-  for(const fn of candidates){
-    try{ const result=pdfSplitNormalizePaddleResult(await fn(canvas,options)); if(result.ok)return result; }
-    catch(e){ lastError=e?.message||String(e); console.warn('PaddleOCR 识别失败，尝试下一个接口',e); }
+  try{
+    const result=pdfSplitNormalizePaddleResult(await engine.predict(canvas,{
+      textDetLimitSideLen:1600,
+      textDetLimitType:'max',
+      textRecScoreThresh:0.45
+    }));
+    return result.ok?result:{...result,error:'PaddleOCR 未返回文字'};
+  }catch(e){
+    console.warn('PaddleOCR 识别失败，将使用 Tesseract',e);
+    return {lines:[],words:[],blocks:[],raw:null,ok:false,error:e?.message||String(e),source:'paddle'};
   }
-  return {lines:[],blocks:[],raw:null,ok:false,error:lastError};
 }
 // ===== Tesseract.js OCR（扫描件/图片型 PDF 识别用）=====
 let tesseractInitPromise=null;
@@ -6399,60 +6432,86 @@ async function pdfSplitOcrReceiptCanvas(canvas, fallbackLines, layoutFields){
     ? (pdfSplitReceiptFieldIsMissing(fields.amount)||pdfSplitReceiptFieldIsMissing(fields.payer))
     : (pdfSplitReceiptFieldIsMissing(fields.amount)||pdfSplitReceiptFieldIsMissing(fields.payer)||pdfSplitReceiptFieldIsMissing(fields.payee)||lines.join('').length<12);
   if(needsOcr){
-    try{
-      const tess=await pdfSplitRunTesseractOcr(canvas);
-      if(tess.lines?.length){
-        lines=lines.concat(tess.lines);
-        const ocrFields=pdfSplitExtractReceiptFields(lines);
-        fields=pdfSplitMergeMissingReceiptFields(fields,ocrFields);
-        const wordNames=pdfSplitExtractPartyNamesFromOcrWords(tess.words,canvas.width,canvas.height);
-        fields=pdfSplitPreferCoordinatePartyNames(fields,wordNames);
-        partyOcrTrace.push(`首轮词${tess.words?.length||0}，左栏${wordNames.payer?'命中':'未命中'}，右栏${wordNames.payee?'命中':'未命中'}`);
-        fields.rawText=[fields.rawText,ocrFields.rawText].filter(Boolean).join('\n');
-        if(pdfSplitReceiptFieldIsMissing(fields.payer)||pdfSplitReceiptFieldIsMissing(fields.payee)){
-          const names=pdfSplitExtractNamesFromOcrText(tess.lines);
-          fields=pdfSplitMergeMissingReceiptFields(fields,{payer:names[0]||'',payee:names[1]||''});
-        }
-        // 整张扫描回单能认出金额却漏掉名称时，只放大顶部名称栏再识别一次。
-        if(pdfSplitReceiptFieldIsMissing(fields.payer)||pdfSplitReceiptFieldIsMissing(fields.payee)){
-          const focusedCanvas=pdfSplitCreatePartyNameOcrCanvas(canvas);
-          const focused=await pdfSplitRunTesseractOcr(focusedCanvas);
-          partyOcrTrace.push(`名称区词${focused.words?.length||0}，文本行${focused.lines?.length||0}`);
-          if(focused.lines?.length){
-            const focusedFields=pdfSplitExtractReceiptFields(focused.lines);
-            const focusedNames=pdfSplitExtractNamesFromOcrText(focused.lines);
-            fields=pdfSplitMergeMissingReceiptFields(fields,{
-              payer:focusedFields.payer||focusedNames[0]||'',
-              payee:focusedFields.payee||focusedNames[1]||''
-            });
-            fields.rawText=[fields.rawText,focused.lines.join('\n')].filter(Boolean).join('\n');
+    let usedPaddle=false;
+    const paddle=await pdfSplitRunPaddleOcr(canvas);
+    if(paddle.lines?.length){
+      usedPaddle=true;
+      lines=lines.concat(paddle.lines);
+      const paddleFields=pdfSplitExtractReceiptFields(lines);
+      fields=pdfSplitMergeMissingReceiptFields(fields,paddleFields);
+      const coordinateNames=pdfSplitExtractPartyNamesFromOcrWords(paddle.words,canvas.width,canvas.height);
+      fields=pdfSplitPreferCoordinatePartyNames(fields,coordinateNames);
+      if(pdfSplitReceiptFieldIsMissing(fields.payer)||pdfSplitReceiptFieldIsMissing(fields.payee)){
+        const names=pdfSplitExtractNamesFromOcrText(paddle.lines);
+        fields=pdfSplitMergeMissingReceiptFields(fields,{payer:names[0]||'',payee:names[1]||''});
+      }
+      fields.rawText=[fields.rawText,paddle.lines.join('\n')].filter(Boolean).join('\n');
+      partyOcrTrace.push(`PaddleOCR文本行${paddle.lines.length}`);
+    }else{
+      partyOcrTrace.push(`PaddleOCR失败：${paddle.error||'未返回文字'}`);
+    }
+    const stillNeedsOcr=layoutFields&&layoutFields.crb
+      ? (pdfSplitReceiptFieldIsMissing(fields.amount)||pdfSplitReceiptFieldIsMissing(fields.payer))
+      : (pdfSplitReceiptFieldIsMissing(fields.amount)||pdfSplitReceiptFieldIsMissing(fields.payer)||pdfSplitReceiptFieldIsMissing(fields.payee));
+    if(stillNeedsOcr){
+      try{
+        const tess=await pdfSplitRunTesseractOcr(canvas);
+        if(tess.lines?.length){
+          lines=lines.concat(tess.lines);
+          const ocrFields=pdfSplitExtractReceiptFields(lines);
+          fields=pdfSplitMergeMissingReceiptFields(fields,ocrFields);
+          const wordNames=pdfSplitExtractPartyNamesFromOcrWords(tess.words,canvas.width,canvas.height);
+          fields=pdfSplitPreferCoordinatePartyNames(fields,wordNames);
+          partyOcrTrace.push(`Tesseract首轮词${tess.words?.length||0}，左栏${wordNames.payer?'命中':'未命中'}，右栏${wordNames.payee?'命中':'未命中'}`);
+          fields.rawText=[fields.rawText,ocrFields.rawText].filter(Boolean).join('\n');
+          if(pdfSplitReceiptFieldIsMissing(fields.payer)||pdfSplitReceiptFieldIsMissing(fields.payee)){
+            const names=pdfSplitExtractNamesFromOcrText(tess.lines);
+            fields=pdfSplitMergeMissingReceiptFields(fields,{payer:names[0]||'',payee:names[1]||''});
+          }
+          // 整张扫描回单能认出金额却漏掉名称时，只放大顶部名称栏再识别一次。
+          if(pdfSplitReceiptFieldIsMissing(fields.payer)||pdfSplitReceiptFieldIsMissing(fields.payee)){
+            const focusedCanvas=pdfSplitCreatePartyNameOcrCanvas(canvas);
+            const focused=await pdfSplitRunTesseractOcr(focusedCanvas);
+            partyOcrTrace.push(`Tesseract名称区词${focused.words?.length||0}，文本行${focused.lines?.length||0}`);
+            if(focused.lines?.length){
+              const focusedFields=pdfSplitExtractReceiptFields(focused.lines);
+              const focusedNames=pdfSplitExtractNamesFromOcrText(focused.lines);
+              fields=pdfSplitMergeMissingReceiptFields(fields,{
+                payer:focusedFields.payer||focusedNames[0]||'',
+                payee:focusedFields.payee||focusedNames[1]||''
+              });
+              fields.rawText=[fields.rawText,focused.lines.join('\n')].filter(Boolean).join('\n');
+            }
           }
         }
-      }
-      // 农行标准回单的整页 OCR 可能返回空行，也可能返回“看似非空”的错误名称。
-      // 因此固定单元格识别放在 tess.lines 条件外，并用大写金额作为该版式的校验信号。
-      const fixedCanvases=pdfSplitCreateFixedFieldOcrCanvases(canvas);
-      const fixedLines={};
-      for(const key of ['payer','payee','amount','amountUpper']){
-        const fixed=await pdfSplitRunTesseractOcr(fixedCanvases[key],{tessedit_pageseg_mode:'7',preserve_interword_spaces:'1'});
-        const wordLine=(fixed.words||[]).map(word=>word.text||'').join('').trim();
-        fixedLines[key]=fixed.lines?.length?fixed.lines:(wordLine?[wordLine]:[]);
-        partyOcrTrace.push(`固定${key}区行${fixedLines[key].length}`);
-      }
-      const digitalInfo=pdfSplitExtractFixedAmountInfo(fixedLines.amount);
-      const amountInfo=pdfSplitReconcileAmountWithChinese(digitalInfo,fixedLines.amountUpper.join(''));
-      const fixedFields={
-        payer:pdfSplitExtractFixedPartyName(fixedLines.payer),
-        payee:pdfSplitExtractFixedPartyName(fixedLines.payee),
-        amount:amountInfo.amount,
-        amountWarning:amountInfo.warning,
-        amountSource:amountInfo.source
-      };
-      fields=pdfSplitPreferFixedReceiptFields(fields,fixedFields,amountInfo.verifiedByChinese);
-      fields.rawText=[fields.rawText,...Object.values(fixedLines).map(part=>part.join('\n'))].filter(Boolean).join('\n');
-      fields.ocrSource='tesseract';
-      fields.amountWarning=(fields.amountWarning?fields.amountWarning+'；':'')+'扫描件/OCR识别结果可能存在误差，请核对';
-    }catch(e){ console.warn('Tesseract 回单识别失败',e); }
+        // 农行标准回单的整页 OCR 可能返回空行，也可能返回“看似非空”的错误名称。
+        // 因此固定单元格识别放在 tess.lines 条件外，并用大写金额作为该版式的校验信号。
+        const fixedCanvases=pdfSplitCreateFixedFieldOcrCanvases(canvas);
+        const fixedLines={};
+        for(const key of ['payer','payee','amount','amountUpper']){
+          const fixed=await pdfSplitRunTesseractOcr(fixedCanvases[key],{tessedit_pageseg_mode:'7',preserve_interword_spaces:'1'});
+          const wordLine=(fixed.words||[]).map(word=>word.text||'').join('').trim();
+          fixedLines[key]=fixed.lines?.length?fixed.lines:(wordLine?[wordLine]:[]);
+          partyOcrTrace.push(`Tesseract固定${key}区行${fixedLines[key].length}`);
+        }
+        const digitalInfo=pdfSplitExtractFixedAmountInfo(fixedLines.amount);
+        const amountInfo=pdfSplitReconcileAmountWithChinese(digitalInfo,fixedLines.amountUpper.join(''));
+        const fixedFields={
+          payer:pdfSplitExtractFixedPartyName(fixedLines.payer),
+          payee:pdfSplitExtractFixedPartyName(fixedLines.payee),
+          amount:amountInfo.amount,
+          amountWarning:amountInfo.warning,
+          amountSource:amountInfo.source
+        };
+        fields=pdfSplitPreferFixedReceiptFields(fields,fixedFields,amountInfo.verifiedByChinese);
+        fields.rawText=[fields.rawText,...Object.values(fixedLines).map(part=>part.join('\n'))].filter(Boolean).join('\n');
+        fields.ocrSource=usedPaddle?'PaddleOCR + Tesseract':'tesseract';
+        fields.amountWarning=(fields.amountWarning?fields.amountWarning+'；':'')+'扫描件/OCR识别结果可能存在误差，请核对';
+      }catch(e){ console.warn('Tesseract 回单识别失败',e); }
+    }else{
+      fields.ocrSource=usedPaddle?'paddle':'文字层';
+      if(usedPaddle)fields.amountWarning=(fields.amountWarning?fields.amountWarning+'；':'')+'PaddleOCR识别结果请核对';
+    }
   }else{
     fields.ocrSource='文字层';
   }
@@ -6810,7 +6869,13 @@ function pdfSplitRenderResults(mode){
       r.fields?.serial?`流水：${esc(r.fields.serial)}`:'',
       r.fields?.accounts?.length?`账号：${esc(r.fields.accounts.join(' / '))}`:''
     ].filter(Boolean).join('<br>');
-    const source=r.fields?.ocrSource?`识别：${r.fields.ocrSource==='tesseract'?'Tesseract（请核对）':'文字层'}`:'';
+    const sourceLabels={
+      tesseract:'Tesseract（请核对）',
+      paddle:'PaddleOCR（请核对）',
+      'PaddleOCR + Tesseract':'PaddleOCR + Tesseract（请核对）',
+      '文字层':'PDF 文字层'
+    };
+    const source=r.fields?.ocrSource?`识别：${sourceLabels[r.fields.ocrSource]||r.fields.ocrSource}`:'';
     const partyDebug=r.fields?.partyOcrDebug?`<br><span style="color:var(--gray-500);">名称诊断：${esc(r.fields.partyOcrDebug)}</span>`:'';
     const meta=isReceiptLike&&r.fields?`<div style="font-size:10px;color:var(--gray-500);line-height:1.35;margin-top:2px;text-align:left;">金额：${esc(r.fields.amount||'未识别')}${warn}<br>付款：${esc(r.fields.payer||'未识别')}<br>收款：${esc(r.fields.payee||'未识别')}${extra?'<br>'+extra:''}${source?'<br>'+esc(source):''}${partyDebug}</div>`:'';
     // 回单/模板模式：文件名做成可编辑框
@@ -8346,6 +8411,9 @@ async function batchRecognizeRenderSource(file){
     pdfContext.fillStyle='#fff';
     pdfContext.fillRect(0,0,canvas.width,canvas.height);
     await page.render({canvasContext:pdfContext,viewport:viewport}).promise;
+    var textContent=await page.getTextContent().catch(function(){return {items:[]};});
+    canvas.__batchRecognizePdfTextItems=pdfSplitAllTextItems(textContent,viewport);
+    canvas.__batchRecognizeSourceType='pdf';
     if(doc.destroy)await doc.destroy();
     return canvas;
   }
@@ -8611,9 +8679,33 @@ function batchRecognizeCleanText(text){
     .replace(/\s+/g,' ')
     .trim();
 }
-async function batchRecognizeOcr(canvas){
-  var result=await pdfSplitRunTesseractOcr(canvas,{tessedit_pageseg_mode:'6',preserve_interword_spaces:'1'});
-  return batchRecognizeCleanText((result.lines||[]).join(' '));
+function batchRecognizeTextLayerText(sourceCanvas,template){
+  var items=sourceCanvas?.__batchRecognizePdfTextItems||[];
+  if(!items.length)return '';
+  var left=sourceCanvas.width*template.x;
+  var top=sourceCanvas.height*template.y;
+  var right=left+sourceCanvas.width*template.w;
+  var bottom=top+sourceCanvas.height*template.h;
+  var selected=items.filter(function(item){
+    var centerX=item.x+item.w/2;
+    var centerY=(item.top+item.bottom)/2;
+    return centerX>=left&&centerX<=right&&centerY>=top&&centerY<=bottom;
+  }).map(function(item){
+    return {text:item.text,x:item.x-left,y:item.y-top};
+  });
+  return batchRecognizeCleanText(pdfSplitGroupTextItems(selected).join(' '));
+}
+async function batchRecognizeOcr(crop,enhanced){
+  var paddle=await pdfSplitRunPaddleOcr(crop);
+  var paddleText=batchRecognizeCleanText((paddle.lines||[]).join(' '));
+  if(paddleText)return {text:paddleText,source:'PaddleOCR'};
+  var tess=await pdfSplitRunTesseractOcr(enhanced||crop,{tessedit_pageseg_mode:'6',preserve_interword_spaces:'1'});
+  var tessText=batchRecognizeCleanText((tess.lines||[]).join(' '));
+  if(!tessText&&enhanced&&enhanced!==crop){
+    tess=await pdfSplitRunTesseractOcr(crop,{tessedit_pageseg_mode:'6',preserve_interword_spaces:'1'});
+    tessText=batchRecognizeCleanText((tess.lines||[]).join(' '));
+  }
+  return {text:tessText,source:tessText?'Tesseract':'未识别'};
 }
 async function batchRecognizeStart(){
   if(!batchRecognizeFiles.length){showToast('请先选择文件','error');return;}
@@ -8628,9 +8720,8 @@ async function batchRecognizeStart(){
   startBtn.disabled=true;
   batchRecognizeResults=[];
   try{
-    progressText.textContent='正在初始化中文 OCR（首次使用需要下载识别模型）…';
-    if(!await ensureTesseractLoaded())throw new Error('OCR 加载失败，请检查网络后重试');
-    var allTexts=[],previews=[];
+    progressText.textContent='准备按“PDF文字层 → 本地 PaddleOCR → Tesseract”识别；首次使用会下载模型…';
+    var allTexts=[],allSources=[],previews=[];
     var separator=document.getElementById('batchRecognizeSeparator').value;
     var totalSteps=batchRecognizeFiles.length*batchRecognizeTemplates.length;
     var completedSteps=0;
@@ -8640,7 +8731,7 @@ async function batchRecognizeStart(){
         ? batchRecognizeSourceCanvas
         : await batchRecognizeRenderSource(batchRecognizeFiles[i]);
       previews.push(batchRecognizeMakePreviewUrl(sourceCanvas));
-      var fieldTexts=[];
+      var fieldTexts=[],fieldSources=[];
       for(var j=0;j<batchRecognizeTemplates.length;j++){
         if(runId!==batchRecognizeRunId)return;
         progressText.textContent='正在识别文件 '+(i+1)+' / '+batchRecognizeFiles.length+
@@ -8648,23 +8739,31 @@ async function batchRecognizeStart(){
         progressBar.style.width=Math.round(completedSteps/totalSteps*100)+'%';
         var crop=batchRecognizeCropCanvas(sourceCanvas, batchRecognizeTemplates[j]);
         try{
-          var enhanced=batchRecognizeEnhanceCanvas(crop);
-          var recognized=await batchRecognizeOcr(enhanced);
-          if(!recognized)recognized=await batchRecognizeOcr(crop);
-          fieldTexts.push(recognized);
+          var textLayer=batchRecognizeTextLayerText(sourceCanvas,batchRecognizeTemplates[j]);
+          if(textLayer){
+            fieldTexts.push(textLayer);
+            fieldSources.push('PDF 文字层');
+          }else{
+            var enhanced=batchRecognizeEnhanceCanvas(crop);
+            var recognized=await batchRecognizeOcr(crop,enhanced);
+            fieldTexts.push(recognized.text);
+            fieldSources.push(recognized.source);
+          }
         }catch(err){
           console.warn('批量识别失败：'+batchRecognizeFiles[i].name+' / '+batchRecognizeTemplates[j].label,err);
           fieldTexts.push('');
+          fieldSources.push('识别失败');
         }
         completedSteps++;
         await new Promise(function(resolve){setTimeout(resolve,0);});
       }
       allTexts.push(fieldTexts);
+      allSources.push(fieldSources);
     }
     var texts=allTexts.map(function(fieldTexts){return batchRecognizeJoinTexts(fieldTexts,separator);});
     var names=batchRecognizeBuildNames(batchRecognizeFiles,texts);
     batchRecognizeResults=batchRecognizeFiles.map(function(file,i){
-      return {file:file,texts:allTexts[i],text:texts[i],name:names[i],previewUrl:previews[i]};
+      return {file:file,texts:allTexts[i],sources:allSources[i],text:texts[i],name:names[i],previewUrl:previews[i]};
     });
     progressBar.style.width='100%';
     progressText.textContent='识别完成，共 '+batchRecognizeResults.length+' 个文件';
@@ -8753,8 +8852,11 @@ function batchRecognizeRenderResults(){
   body.innerHTML=batchRecognizeResults.map(function(result,i){
     var values=(result.texts||[result.text]).map(function(text,index){
       var label=batchRecognizeTemplates[index]?.label||('字段 '+(index+1));
+      var source=result.sources?.[index]||'';
       return '<div style="margin-bottom:4px;"><strong style="color:'+batchRecognizeTemplateColor(index)+';">'+
-        renameEsc(label)+'：</strong>'+renameEsc(text||'未识别')+'</div>';
+        renameEsc(label)+'：</strong>'+renameEsc(text||'未识别')+
+        (source?'<span style="margin-left:6px;font-size:10px;color:var(--gray-400);">['+renameEsc(source)+']</span>':'')+
+        '</div>';
     }).join('');
     return '<tr><td>'+(i+1)+'</td><td><div class="recognize-original-cell">'+
       '<button type="button" class="recognize-preview-thumb" onclick="batchRecognizeOpenPreview('+i+')" aria-label="预览 '+renameAttrEsc(result.file.name)+'"><img src="'+renameAttrEsc(result.previewUrl||'')+'" alt=""></button>'+

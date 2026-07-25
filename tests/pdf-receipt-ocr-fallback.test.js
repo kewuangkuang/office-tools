@@ -66,6 +66,16 @@ function loadTesseractWordAdapter(html) {
   return context.api;
 }
 
+function loadPaddleResultAdapter(html) {
+  const start = html.indexOf('function pdfSplitPaddlePolyToBbox(');
+  const end = html.indexOf('\nasync function pdfSplitRunPaddleOcr(', start);
+  assert.ok(start >= 0 && end > start, 'PaddleOCR result adapter should exist before OCR runner');
+  const context = {};
+  vm.createContext(context);
+  vm.runInContext(`${html.slice(start, end)}\nthis.api={pdfSplitNormalizePaddleResult};`, context);
+  return context.api;
+}
+
 function loadFixedFieldBoxes(html) {
   const start = html.indexOf('function pdfSplitReceiptFixedFieldBoxes(');
   const end = html.indexOf('\nfunction pdfSplitCreateFixedFieldOcrCanvases(', start);
@@ -180,13 +190,18 @@ test('left-right OCR coordinates override a low-confidence merged party line', (
   assert.equal(fields.amount, '3400.00元');
 });
 
-test('canonical entry uses the pre-Paddle Tesseract receipt path', () => {
+test('canonical entry uses text fields, then browser PaddleOCR, then Tesseract', () => {
   for (const file of canonicalFiles) {
     const html = source(file);
+    assert.match(html, /async function pdfSplitRunPaddleOcr\s*\(/, `${file} PaddleOCR adapter`);
     assert.match(html, /function pdfSplitRunTesseractOcr\s*\(/, `${file} Tesseract adapter`);
     const coordinator = html.slice(html.indexOf('async function pdfSplitOcrReceiptCanvas'), html.indexOf('function pdfSplitBuildReceiptBaseName'));
-    assert.doesNotMatch(coordinator, /pdfSplitRunPaddleOcr/, `${file} must not wait for Paddle before Tesseract`);
-    assert.match(coordinator, /pdfSplitRunTesseractOcr/, `${file} should use Tesseract when text fields are missing`);
+    const paddleCall = coordinator.indexOf('pdfSplitRunPaddleOcr(canvas)');
+    const tesseractCall = coordinator.indexOf('pdfSplitRunTesseractOcr(canvas)');
+    assert.ok(paddleCall >= 0, `${file} should call PaddleOCR when text fields are missing`);
+    assert.ok(tesseractCall > paddleCall, `${file} should keep Tesseract after PaddleOCR`);
+    assert.match(coordinator, /if\(stillNeedsOcr\)/, `${file} only reaches Tesseract when PaddleOCR leaves fields missing`);
+    assert.doesNotMatch(html, /baiduOcr|BAIDU_OCR|百度高精度 OCR|Secret Key|API Key/, `${file} should not retain Baidu cloud credentials or calls`);
     assert.doesNotMatch(html, /pdfSplitPreprocessForTesseract/, `${file} must not run the later full-image Otsu preprocessing`);
     assert.match(html, /const scale=2\.5;/, `${file} should restore the faster pre-Paddle render scale`);
   }
@@ -255,6 +270,24 @@ test('Tesseract v5 nested blocks are flattened into OCR words', () => {
     { text: '付款人名称', bbox: { x0: 10, y0: 20, x1: 80, y1: 45 } },
     { text: '测试公司', bbox: { x0: 90, y0: 20, x1: 150, y1: 45 } }
   ]);
+});
+
+test('official PaddleOCR.js items become text lines and coordinate words', () => {
+  const { pdfSplitNormalizePaddleResult: normalize } = loadPaddleResultAdapter(source());
+  const result = normalize([{
+    image: { width: 900, height: 220 },
+    items: [{
+      text: '测试文字12345',
+      score: 0.99,
+      poly: [[50, 70], [450, 70], [450, 145], [50, 145]]
+    }]
+  }]);
+  assert.deepEqual(Array.from(result.lines), ['测试文字12345']);
+  assert.deepEqual(JSON.parse(JSON.stringify(result.words)), [{
+    text: '测试文字12345',
+    bbox: { x0: 50, y0: 70, x1: 450, y1: 145 }
+  }]);
+  assert.equal(result.ok, true);
 });
 
 test('empty top-level Tesseract words fall back to nested block coordinates', () => {
@@ -368,8 +401,11 @@ test('fixed-position OCR still runs when full-receipt Tesseract returns no lines
   const fullLineGuard = coordinator.indexOf('if(tess.lines?.length)');
   const fixedFallback = coordinator.indexOf('pdfSplitCreateFixedFieldOcrCanvases(canvas)');
   assert.ok(fixedFallback > fullLineGuard, 'fixed fallback follows the full OCR attempt');
-  const guardEnd = coordinator.indexOf('\n      }', fullLineGuard);
-  assert.ok(fixedFallback > guardEnd, 'fixed fallback is not trapped inside the non-empty full OCR branch');
+  assert.match(
+    coordinator,
+    /if\(tess\.lines\?\.length\)\{[\s\S]*?\n        \}\n        \/\/ 农行标准回单[\s\S]*?pdfSplitCreateFixedFieldOcrCanvases\(canvas\)/,
+    'fixed fallback is not trapped inside the non-empty full OCR branch'
+  );
 });
 
 test('unrecognized party names expose compact OCR diagnostics in the preview', () => {
