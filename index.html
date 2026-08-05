@@ -7426,6 +7426,80 @@ let splitWB = null, splitFileName = '', splitMergedData = null, splitSelectedShe
 let splitMode = 'column';
 let splitPaper = 'A4', splitOrient = 'portrait';
 
+// Read a whole-number setting without allowing invalid values to create a bad loop step.
+function splitReadInt(id, fallback, min = 1) {
+  const raw = document.getElementById(id)?.value;
+  if (raw == null || String(raw).trim() === '') return fallback;
+  const value = Number(raw);
+  return Number.isInteger(value) && value >= min ? value : fallback;
+}
+
+// Do not spread every row into Math.max: large sheets can exceed the browser's argument limit.
+function splitGetMaxCols(rowSets) {
+  let maxCols = 1;
+  for (const rows of rowSets || []) {
+    if (!Array.isArray(rows)) continue;
+    for (const row of rows) {
+      if (Array.isArray(row) && row.length > maxCols) maxCols = row.length;
+    }
+  }
+  return maxCols;
+}
+
+// Some Excel files save a full-column selection as the worksheet range even when
+// only a few rows contain values. Ignore formatting-only cells when bounding data.
+function splitCellHasValue(cell) {
+  if (!cell) return false;
+  if (cell.f) return true;
+  const value = cell.v;
+  return value != null && !(typeof value === 'string' && value.trim() === '');
+}
+
+function splitGetDataRange(ws) {
+  const ref = ws && ws['!ref'];
+  if (!ref) return null;
+  const utils = XLSX && XLSX.utils;
+  if (!utils || typeof utils.decode_range !== 'function' || typeof utils.decode_cell !== 'function') return ref;
+
+  let sourceRange;
+  try {
+    sourceRange = utils.decode_range(ref);
+  } catch (_) {
+    return ref;
+  }
+
+  let lastRow = sourceRange.s.r - 1;
+  let lastCol = sourceRange.s.c - 1;
+  for (const address of Object.keys(ws)) {
+    if (address[0] === '!') continue;
+    const cell = ws[address];
+    if (!splitCellHasValue(cell)) continue;
+    let cellRef;
+    try {
+      cellRef = utils.decode_cell(address);
+    } catch (_) {
+      continue;
+    }
+    if (cellRef.r < sourceRange.s.r || cellRef.r > sourceRange.e.r) continue;
+    if (cellRef.c < sourceRange.s.c || cellRef.c > sourceRange.e.c) continue;
+    if (cellRef.r > lastRow) lastRow = cellRef.r;
+    if (cellRef.c > lastCol) lastCol = cellRef.c;
+  }
+
+  if (lastRow < sourceRange.s.r || lastCol < sourceRange.s.c) return null;
+  const boundedRange = {
+    s: { r: sourceRange.s.r, c: sourceRange.s.c },
+    e: { r: lastRow, c: lastCol }
+  };
+  return typeof utils.encode_range === 'function' ? utils.encode_range(boundedRange) : ref;
+}
+
+function splitReadSheetData(ws) {
+  const range = splitGetDataRange(ws);
+  if (!range) return [];
+  return XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', range });
+}
+
 function splitSetMode(mode) {
   splitMode = mode;
   document.querySelectorAll('#splitModeOptions .nup-option').forEach(b => b.classList.toggle('active', b.dataset.mode === mode));
@@ -7525,7 +7599,7 @@ function splitHandleFile(file) {
       const names = splitWB.SheetNames;
       splitSelectedSheet = names[0];
       const firstWS = splitWB.Sheets[names[0]];
-      const firstData = XLSX.utils.sheet_to_json(firstWS, { header: 1, defval: '' });
+      const firstData = splitReadSheetData(firstWS);
       const cols = (firstData[0] || []).length;
       const rows = firstData.length;
       document.getElementById('splitFileInfo').innerHTML = '<div class="file-icon-box">XLS</div><div class="file-detail"><div class="file-name">' + esc(splitFileName) + '</div><div class="file-meta">' + names.length + ' 个工作表 · ' + rows + ' 行 · ' + cols + ' 列</div></div><button class="btn-change-file" onclick="splitInput.click()">更换文件</button>';
@@ -7577,7 +7651,7 @@ function splitSelectSheet(name) {
   });
   // Update file info
   const ws = splitWB.Sheets[name];
-  const data = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+  const data = splitReadSheetData(ws);
   const cols = (data[0] || []).length;
   const rows = data.length;
   document.getElementById('splitFileInfo').innerHTML = '<div class="file-icon-box">XLS</div><div class="file-detail"><div class="file-name">' + esc(splitFileName) + '</div><div class="file-meta">' + splitWB.SheetNames.length + ' 个工作表 · ' + rows + ' 行 · ' + cols + ' 列（当前：' + esc(name) + '）</div></div><button class="btn-change-file" onclick="splitInput.click()">更换文件</button>';
@@ -7591,7 +7665,7 @@ function splitRenderPreview(sheetName) {
   const info = document.getElementById('splitPreviewInfo');
   const ws = splitWB.Sheets[sheetName];
   if (!ws) { card.style.display = 'none'; return; }
-  const data = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+  const data = splitReadSheetData(ws);
   const previewRows = data.slice(0, 100);
   const maxCols = Math.max(...previewRows.map(r => r.length), 0);
   if (!previewRows.length) { card.style.display = 'none'; return; }
@@ -7619,24 +7693,24 @@ function splitRenderPreview(sheetName) {
 function splitExecute() {
   if (!splitWB) { showToast('请先上传文件', 'error'); return; }
   const ws = splitWB.Sheets[splitSelectedSheet];
-  const srcData = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+  const srcData = splitReadSheetData(ws);
   if (!srcData.length) { showToast('文件为空', 'error'); return; }
 
-  const headerRows = parseInt(document.getElementById('splitHeaderRows').value) || 1;
-  const tablesPerPage = parseInt(document.getElementById('splitTablesPerPage').value) || 4;
-  const rowsPerPage = parseInt(document.getElementById('splitRowsPerPage').value) || 52;
+  const headerRows = splitReadInt('splitHeaderRows', 1, 0);
+  const tablesPerPage = splitReadInt('splitTablesPerPage', 4);
+  const rowsPerPage = splitReadInt('splitRowsPerPage', 52);
   const rowHeightVal = parseFloat(document.getElementById('splitRowHeight').value) || 12;
   const mergeFirst = document.getElementById('splitMergeFirst').checked;
   const firstRowH = mergeFirst ? (parseFloat(document.getElementById('splitFirstRowH').value) || 20) : rowHeightVal;
 
   const headers = srcData.slice(0, headerRows);
   const dataRows = srcData.slice(headerRows);
-  const maxCols = Math.max(...headers.map(h => h.length), ...dataRows.map(r => r.length), 1);
+  const maxCols = splitGetMaxCols([headers, dataRows]);
 
   // ---- Split into table groups ----
   let tableGroups = [];
   if (splitMode === 'column') {
-    const colIdx = (parseInt(document.getElementById('splitCol').value) || 1) - 1;
+    const colIdx = splitReadInt('splitCol', 1) - 1;
     const groups = {};
     const order = [];
     for (const row of dataRows) {
@@ -7647,7 +7721,7 @@ function splitExecute() {
     }
     tableGroups = order.map(k => groups[k]);
   } else {
-    const rowsPerTable = parseInt(document.getElementById('splitCol').value) || 10;
+    const rowsPerTable = splitReadInt('splitCol', 10);
     for (let i = 0; i < dataRows.length; i += rowsPerTable) {
       const group = dataRows.slice(i, i + rowsPerTable);
       if (group.some(r => r.some(c => c !== ''))) tableGroups.push(group);
