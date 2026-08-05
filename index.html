@@ -7426,6 +7426,26 @@ let splitWB = null, splitFileName = '', splitMergedData = null, splitSelectedShe
 let splitMode = 'column';
 let splitPaper = 'A4', splitOrient = 'portrait';
 
+// Read a whole-number setting without allowing invalid values to create a bad loop step.
+function splitReadInt(id, fallback, min = 1) {
+  const raw = document.getElementById(id)?.value;
+  if (raw == null || String(raw).trim() === '') return fallback;
+  const value = Number(raw);
+  return Number.isInteger(value) && value >= min ? value : fallback;
+}
+
+// Do not spread every row into Math.max: large sheets can exceed the browser's argument limit.
+function splitGetMaxCols(rowSets) {
+  let maxCols = 1;
+  for (const rows of rowSets || []) {
+    if (!Array.isArray(rows)) continue;
+    for (const row of rows) {
+      if (Array.isArray(row) && row.length > maxCols) maxCols = row.length;
+    }
+  }
+  return maxCols;
+}
+
 function splitSetMode(mode) {
   splitMode = mode;
   document.querySelectorAll('#splitModeOptions .nup-option').forEach(b => b.classList.toggle('active', b.dataset.mode === mode));
@@ -7622,21 +7642,21 @@ function splitExecute() {
   const srcData = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
   if (!srcData.length) { showToast('文件为空', 'error'); return; }
 
-  const headerRows = parseInt(document.getElementById('splitHeaderRows').value) || 1;
-  const tablesPerPage = parseInt(document.getElementById('splitTablesPerPage').value) || 4;
-  const rowsPerPage = parseInt(document.getElementById('splitRowsPerPage').value) || 52;
+  const headerRows = splitReadInt('splitHeaderRows', 1, 0);
+  const tablesPerPage = splitReadInt('splitTablesPerPage', 4);
+  const rowsPerPage = splitReadInt('splitRowsPerPage', 52);
   const rowHeightVal = parseFloat(document.getElementById('splitRowHeight').value) || 12;
   const mergeFirst = document.getElementById('splitMergeFirst').checked;
   const firstRowH = mergeFirst ? (parseFloat(document.getElementById('splitFirstRowH').value) || 20) : rowHeightVal;
 
   const headers = srcData.slice(0, headerRows);
   const dataRows = srcData.slice(headerRows);
-  const maxCols = Math.max(...headers.map(h => h.length), ...dataRows.map(r => r.length), 1);
+  const maxCols = splitGetMaxCols([headers, dataRows]);
 
   // ---- Split into table groups ----
   let tableGroups = [];
   if (splitMode === 'column') {
-    const colIdx = (parseInt(document.getElementById('splitCol').value) || 1) - 1;
+    const colIdx = splitReadInt('splitCol', 1) - 1;
     const groups = {};
     const order = [];
     for (const row of dataRows) {
@@ -7647,7 +7667,7 @@ function splitExecute() {
     }
     tableGroups = order.map(k => groups[k]);
   } else {
-    const rowsPerTable = parseInt(document.getElementById('splitCol').value) || 10;
+    const rowsPerTable = splitReadInt('splitCol', 10);
     for (let i = 0; i < dataRows.length; i += rowsPerTable) {
       const group = dataRows.slice(i, i + rowsPerTable);
       if (group.some(r => r.some(c => c !== ''))) tableGroups.push(group);
