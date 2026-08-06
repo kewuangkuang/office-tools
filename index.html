@@ -2350,7 +2350,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       </div>
 
       <div class="toggle-row">
-        <div class="toggle-text">小表排列顺序<button type="button" class="split-order-help-trigger" id="splitOrderHelpTrigger" onclick="openSplitOrderHelp()" aria-haspopup="dialog" aria-controls="splitOrderHelpModal" aria-expanded="false">❔ 看图说明</button><small>裁剪同一位置选第一项；需要原来的分页方式选第二项</small></div>
+        <div class="toggle-text">小表排列顺序<button type="button" class="split-order-help-trigger" id="splitOrderHelpTrigger" onclick="openSplitOrderHelp()" aria-haspopup="dialog" aria-controls="splitOrderHelpModal" aria-expanded="false">❔ 看图说明</button><small>裁剪同一位置选第一项；最后不足的表格会保留空白位置；需要原来的分页方式选第二项</small></div>
         <div class="nup-options" id="splitOrderOptions">
           <button class="nup-option active" data-order="position" onclick="splitSetOrder('position')">按位置（裁剪友好）</button>
           <button class="nup-option" data-order="page" onclick="splitSetOrder('page')">按原来顺序</button>
@@ -2656,7 +2656,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
           <div class="split-order-crop-result"><span>✂️ 裁剪最上面</span><strong>1 → 5 → 9 → …</strong></div>
         </section>
       </div>
-      <div class="split-order-help-tip"><strong>简单判断：</strong>想把同一位置的纸集中裁剪，就选“按位置”；想让每一页内部保持 1、2、3、4 的连续顺序，就选“按原来顺序”。</div>
+      <div class="split-order-help-tip"><strong>简单判断：</strong>想把同一位置的纸集中裁剪，就选“按位置”；想让每一页内部保持 1、2、3、4 的连续顺序，就选“按原来顺序”。如果最后一页不足 4 个表格，空出的位置会保留，不会重新挤压版式。</div>
     </div>
   </div>
 </div>
@@ -2673,6 +2673,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         <ul>
           <li>表格拆分新增“小表排列顺序”：可按位置（裁剪友好）排列，也可以保留原来的分页顺序。</li>
           <li>新增“看图说明”悬浮窗口，用图示解释两种打印排列方式，方便根据裁剪习惯选择。</li>
+          <li>当总表数不是每页数量的整数倍时，保留最后页面的空白位置，确保打印版式仍按每页固定位置对齐。</li>
           <li>优化大表固定行数拆分的列数计算，避免大表导出时出现参数溢出。</li>
         </ul>
       </div>
@@ -7680,11 +7681,15 @@ function splitBuildPageGroups(tableGroups, tablesPerPage, order = 'position') {
   const groups = Array.isArray(tableGroups) ? tableGroups : [];
   if (!groups.length) return [];
   const perPage = Number.isInteger(tablesPerPage) && tablesPerPage > 0 ? tablesPerPage : 1;
+  const padPageSlots = pageGroups => {
+    while (pageGroups.length < perPage) pageGroups.push(null);
+    return pageGroups;
+  };
 
   if (order === 'page') {
     const pages = [];
     for (let pageStart = 0; pageStart < groups.length; pageStart += perPage) {
-      pages.push(groups.slice(pageStart, pageStart + perPage));
+      pages.push(padPageSlots(groups.slice(pageStart, pageStart + perPage)));
     }
     return pages;
   }
@@ -7698,7 +7703,7 @@ function splitBuildPageGroups(tableGroups, tablesPerPage, order = 'position') {
       const groupIndex = slotIndex * pageCount + pageIndex;
       if (groupIndex < groups.length) pageGroups.push(groups[groupIndex]);
     }
-    pages.push(pageGroups);
+    pages.push(padPageSlots(pageGroups));
   }
   return pages;
 }
@@ -7944,10 +7949,22 @@ function splitExecute() {
   let currentRow = 0;
 
   const pageGroupsList = splitBuildPageGroups(tableGroups, tablesPerPage, splitOrder);
+  const averageGroupRows = Math.max(1, Math.ceil(dataRows.length / tableGroups.length));
+  const emptySlotRows = Math.min(rowsPerPage, headerRows + averageGroupRows);
+  const appendBlankRows = count => {
+    for (let b = 0; b < count; b++) {
+      outRows[currentRow] = [];
+      for (let c = 0; c < maxCols; c++) outRows[currentRow][c] = '';
+      rowHeights[currentRow] = rowHeightVal;
+      isBlankRow[currentRow] = true;
+      isHeaderRow[currentRow] = false;
+      currentRow++;
+    }
+  };
   for (const pageGroups of pageGroupsList) {
     // Calculate total rows used by tables on this page
     let totalTableRows = 0;
-    for (const g of pageGroups) totalTableRows += headerRows + g.length;
+    for (const g of pageGroups) totalTableRows += g == null ? emptySlotRows : headerRows + g.length;
 
     // Calculate gaps: evenly distribute remaining rows between tables
     const gaps = pageGroups.length - 1;
@@ -7962,34 +7979,32 @@ function splitExecute() {
     // Write tables and gaps
     for (let gi = 0; gi < pageGroups.length; gi++) {
       const group = pageGroups[gi];
-      // Header rows
-      for (let hr = 0; hr < headerRows; hr++) {
-        outRows[currentRow] = [];
-        for (let c = 0; c < maxCols; c++) outRows[currentRow][c] = (c < (headers[hr] || []).length) ? headers[hr][c] : '';
-        rowHeights[currentRow] = (hr === 0 && mergeFirst) ? firstRowH : rowHeightVal;
-        isBlankRow[currentRow] = false;
-        isHeaderRow[currentRow] = true;
-        currentRow++;
-      }
-      // Data rows
-      for (const dRow of group) {
-        outRows[currentRow] = [];
-        for (let c = 0; c < maxCols; c++) outRows[currentRow][c] = (c < dRow.length) ? dRow[c] : '';
-        rowHeights[currentRow] = rowHeightVal;
-        isBlankRow[currentRow] = false;
-        isHeaderRow[currentRow] = false;
-        currentRow++;
-      }
-      // Gap rows (blank, to fill the page evenly)
-      if (gi < blankAlloc.length && blankAlloc[gi] > 0) {
-        for (let b = 0; b < blankAlloc[gi]; b++) {
+      if (group == null) {
+        // Keep the physical slot even when the source has no fourth table.
+        appendBlankRows(emptySlotRows);
+      } else {
+        // Header rows
+        for (let hr = 0; hr < headerRows; hr++) {
           outRows[currentRow] = [];
-          for (let c = 0; c < maxCols; c++) outRows[currentRow][c] = '';
+          for (let c = 0; c < maxCols; c++) outRows[currentRow][c] = (c < (headers[hr] || []).length) ? headers[hr][c] : '';
+          rowHeights[currentRow] = (hr === 0 && mergeFirst) ? firstRowH : rowHeightVal;
+          isBlankRow[currentRow] = false;
+          isHeaderRow[currentRow] = true;
+          currentRow++;
+        }
+        // Data rows
+        for (const dRow of group) {
+          outRows[currentRow] = [];
+          for (let c = 0; c < maxCols; c++) outRows[currentRow][c] = (c < dRow.length) ? dRow[c] : '';
           rowHeights[currentRow] = rowHeightVal;
-          isBlankRow[currentRow] = true;
+          isBlankRow[currentRow] = false;
           isHeaderRow[currentRow] = false;
           currentRow++;
         }
+      }
+      // Gap rows (blank, to fill the page evenly)
+      if (gi < blankAlloc.length && blankAlloc[gi] > 0) {
+        appendBlankRows(blankAlloc[gi]);
       }
     }
     // If last page has fewer tables than tablesPerPage, fill remaining rows to reach rowsPerPage
