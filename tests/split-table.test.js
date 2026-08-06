@@ -42,9 +42,50 @@ function loadSplitHelpers(values = {}) {
     XLSX: { utils: xlsxUtils }
   };
   vm.createContext(context);
-  vm.runInContext(`${html.slice(start, end)}\nthis.api={splitReadInt, splitGetMaxCols, splitGetDataRange};`, context);
+  vm.runInContext(`${html.slice(start, end)}\nthis.api={splitReadInt, splitGetMaxCols, splitGetDataRange, splitBuildPageGroups};`, context);
   return context.api;
 }
+
+test('table groups are ordered by print position across pages for easier cropping', () => {
+  const { splitBuildPageGroups } = loadSplitHelpers();
+  const groups = Array.from({ length: 40 }, (_, index) => `group-${index + 1}`);
+  const expectedPages = Array.from({ length: 10 }, (_, pageIndex) => [
+    `group-${pageIndex + 1}`,
+    `group-${pageIndex + 11}`,
+    `group-${pageIndex + 21}`,
+    `group-${pageIndex + 31}`
+  ]);
+
+  const actualPages = JSON.parse(JSON.stringify(splitBuildPageGroups(groups, 4)));
+  assert.deepEqual(actualPages, expectedPages);
+});
+
+test('table groups can keep the original page-first order when selected', () => {
+  const { splitBuildPageGroups } = loadSplitHelpers();
+  const groups = Array.from({ length: 8 }, (_, index) => `group-${index + 1}`);
+  const actualPages = JSON.parse(JSON.stringify(splitBuildPageGroups(groups, 4, 'page')));
+
+  assert.deepEqual(actualPages, [
+    ['group-1', 'group-2', 'group-3', 'group-4'],
+    ['group-5', 'group-6', 'group-7', 'group-8']
+  ]);
+});
+
+test('split table UI exposes both page ordering choices and passes the selected order', () => {
+  assert.match(html, /id="splitOrderOptions"/);
+  assert.match(html, /onclick="splitSetOrder\('page'\)"/);
+  assert.match(html, /splitBuildPageGroups\(tableGroups, tablesPerPage, splitOrder\)/);
+});
+
+test('split order choices have a clickable visual explanation', () => {
+  assert.match(html, /id="splitOrderHelpTrigger"/);
+  assert.match(html, /onclick="openSplitOrderHelp\(\)"/);
+  assert.match(html, /id="splitOrderHelpModal"/);
+  assert.match(html, /data-guide-order="position"/);
+  assert.match(html, /data-guide-order="page"/);
+  assert.match(html, /function openSplitOrderHelp\(\)/);
+  assert.match(html, /function closeSplitOrderHelp\(/);
+});
 
 test('fixed-row splitting calculates max columns for large sheets without argument overflow', () => {
   const { splitGetMaxCols } = loadSplitHelpers();
