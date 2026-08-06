@@ -71,10 +71,27 @@ test('table groups can keep the original page-first order when selected', () => 
   ]);
 });
 
+test('incomplete final pages keep all physical table slots', () => {
+  const { splitBuildPageGroups } = loadSplitHelpers();
+  const groups = Array.from({ length: 146 }, (_, index) => `group-${index + 1}`);
+  const positionPages = JSON.parse(JSON.stringify(splitBuildPageGroups(groups, 4)));
+  const pagePages = JSON.parse(JSON.stringify(splitBuildPageGroups(groups, 4, 'page')));
+
+  assert.equal(positionPages.length, 37);
+  assert.ok(positionPages.every(page => page.length === 4));
+  assert.deepEqual(positionPages[34], ['group-35', 'group-72', 'group-109', 'group-146']);
+  assert.deepEqual(positionPages[35], ['group-36', 'group-73', 'group-110', null]);
+  assert.deepEqual(positionPages[36], ['group-37', 'group-74', 'group-111', null]);
+  assert.deepEqual(pagePages[36], ['group-145', 'group-146', null, null]);
+});
+
 test('split table UI exposes both page ordering choices and passes the selected order', () => {
   assert.match(html, /id="splitOrderOptions"/);
   assert.match(html, /onclick="splitSetOrder\('page'\)"/);
   assert.match(html, /splitBuildPageGroups\(tableGroups, tablesPerPage, splitOrder\)/);
+  assert.match(html, /emptySlotRows/);
+  assert.match(html, /group == null/);
+  assert.match(html, /保留空白位置/);
 });
 
 test('split order choices have a clickable visual explanation', () => {
