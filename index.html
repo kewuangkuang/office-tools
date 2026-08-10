@@ -2686,6 +2686,16 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     </div>
     <div class="changelog-body">
       <div class="changelog-entry">
+        <div class="changelog-date">2026-08-10</div>
+        <ul>
+          <li>新增“批量框选提取”：上传多份同版式 PDF / 图片，在示范文件上框选固定位置，每个框对应 Excel 一列，每个文件对应一行。</li>
+          <li>批量框选提取支持按需添加超过 5 列，列名按 Excel 规则自动生成（A、B……Z、AA、AB）。</li>
+          <li>提取列支持选择“文本”或“数字”格式；数字列会自动去除 <code>¥</code>、<code>￥</code>、<code>元</code> 和千分位逗号，例如将 <code>¥38.42</code> 导出为可计算的数字 <code>38.42</code>。</li>
+          <li>导出 Excel 前可以直接修改识别结果；无法转换的数字会标记为“需核对”。</li>
+          <li>批量识别的 PaddleOCR、Tesseract 资源增加备用 CDN，加载失败时显示更具体的资源诊断信息。</li>
+        </ul>
+      </div>
+      <div class="changelog-entry">
         <div class="changelog-date">2026-08-06</div>
         <ul>
           <li>表格拆分新增“小表排列顺序”：可按位置（裁剪友好）排列，也可以保留原来的分页顺序。</li>
