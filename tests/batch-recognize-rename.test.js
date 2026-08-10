@@ -67,6 +67,33 @@ test('failed PaddleOCR initialization is cached so a batch falls back only once'
   assert.doesNotMatch(source, /paddleOcrInitPromise=null/);
 });
 
+test('online OCR retries alternate CDNs for PaddleOCR and Tesseract', () => {
+  assert.match(html, /PADDLE_OCR_MODULE_URLS=\[/);
+  assert.match(html, /https:\/\/esm\.sh\/\@paddleocr\/paddleocr-js\@0\.4\.2\?bundle/);
+  assert.match(html, /https:\/\/unpkg\.com\/\@paddleocr\/paddleocr-js\@0\.4\.2\/dist\/index\.mjs\?module/);
+  assert.match(html, /PADDLE_OCR_WASM_BASE_URLS=\[/);
+  assert.match(html, /https:\/\/unpkg\.com\/onnxruntime-web\@1\.22\.0\/dist\//);
+  assert.match(html, /TESSERACT_SCRIPT_URLS=\[/);
+  assert.match(html, /https:\/\/unpkg\.com\/tesseract\.js\@5\.1\.1\/dist\/tesseract\.min\.js/);
+});
+
+test('OCR reports a resource-loading failure instead of silently saying unrecognized', async () => {
+  const start = html.indexOf('async function batchRecognizeOcr(crop,enhanced)');
+  const end = html.indexOf('\nasync function batchRecognizeStart()', start);
+  const context = {
+    batchRecognizeCleanText: text => String(text || '').replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim(),
+    pdfSplitRunPaddleOcr: async () => ({lines: [], error: 'Paddle unavailable'}),
+    pdfSplitRunTesseractOcr: async () => ({lines: [], error: 'Tesseract unavailable'})
+  };
+  vm.createContext(context);
+  vm.runInContext(`${html.slice(start, end)}\nthis.run=batchRecognizeOcr;`, context);
+
+  const result = await context.run({}, {});
+  assert.equal(result.source, 'OCR资源加载失败');
+  assert.match(result.error, /Paddle unavailable/);
+  assert.match(result.error, /Tesseract unavailable/);
+});
+
 test('OCR keeps normal phone-photo resolution and enlarges narrow text crops', () => {
   const fitStart = html.indexOf('function batchRecognizeFitSourceSize(');
   const fitEnd = html.indexOf('\nasync function batchRecognizeRenderSource(', fitStart);

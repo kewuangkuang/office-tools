@@ -1340,6 +1340,10 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     width:150px; padding:6px 8px; border:1px solid var(--gray-300);
     border-radius:6px; background:var(--card-bg,#fff); color:var(--gray-700); font-size:12px;
   }
+  .recognize-field-format {
+    padding:6px 8px; border:1px solid var(--gray-300); border-radius:6px;
+    background:var(--card-bg,#fff); color:var(--gray-700); font-size:12px;
+  }
   .recognize-field-actions { display:flex; gap:5px; margin-left:auto; }
   .recognize-field-actions button {
     padding:5px 8px; border:1px solid var(--gray-300); border-radius:6px;
@@ -1416,7 +1420,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
             <h2 id="excelSectionTitle">Excel 工具</h2>
             <p>合并、拆分与整理工作表</p>
           </div>
-          <span class="tool-section-count">3 个工具</span>
+          <span class="tool-section-count">4 个工具</span>
         </div>
         <div class="tools-grid">
           <button type="button" class="tool-card" onclick="showTool('multi')">
@@ -1476,7 +1480,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
           <div class="tool-section-mark">Aa</div>
           <div class="tool-section-title">
             <h2 id="renameSectionTitle">文件改名</h2>
-            <p>批量命名、识别命名与文件名整理</p>
+            <p>批量命名、框选提取与文件名整理</p>
           </div>
           <span class="tool-section-count">3 个工具</span>
         </div>
@@ -1492,6 +1496,12 @@ https://github.com/nodeca/pako/blob/main/LICENSE
             <h3>批量识别命名</h3>
             <p>在一张示例图上框住姓名、日期等文字，自动给同版式文件改名</p>
             <div class="tool-tags"><span class="tool-tag">框住要识别的文字</span><span class="tool-tag">本地识别</span><span class="tool-tag">ZIP 下载</span></div>
+          </button>
+          <button type="button" class="tool-card" onclick="showTool('extract')">
+            <div class="tool-icon">📊</div>
+            <h3>批量框选提取</h3>
+            <p>框选固定位置文字，按文件逐行整理成 Excel 表格</p>
+            <div class="tool-tags"><span class="tool-tag">一框一列</span><span class="tool-tag">本地识别</span><span class="tool-tag">Excel 导出</span></div>
           </button>
           <button type="button" class="tool-card" onclick="showTool('flist')">
             <div class="tool-icon">📋</div>
@@ -2464,14 +2474,14 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   <div id="page-recognize-rename" style="display:none;">
     <div class="tool-header">
       <a class="back-link" href="javascript:showHome()">🏠 返回</a>
-      <h3>🔎 批量识别命名</h3>
+      <h3 id="batchRecognizeTitle">🔎 批量识别命名</h3>
     </div>
     <div class="card">
-      <div class="card-title"><span class="icon">📁</span> 第一步：选择同版式的 PDF / 图片</div>
+      <div class="card-title" id="batchRecognizeUploadTitle"><span class="icon">📁</span> 第一步：选择同版式的 PDF / 图片</div>
       <div class="upload-zone" id="batchRecognizeZone">
         <div class="upload-icon">🔎</div>
         <div class="upload-text">拖拽、粘贴或点击选择文件</div>
-        <div class="upload-hint">上传后任选一张作为示范；PDF 使用第一页。其他文件的版式和方向要与示范一致。</div>
+        <div class="upload-hint" id="batchRecognizeUploadHint">上传后任选一张作为示范；PDF 使用第一页。其他文件的版式和方向要与示范一致。</div>
         <div class="upload-btn-row">
           <button class="btn btn-outline" onclick="event.stopPropagation();document.getElementById('batchRecognizeInput').click()">选择 PDF / 图片</button>
           <button class="btn btn-outline btn-clear-upload" id="batchRecognizeClearBtn" onclick="event.stopPropagation();batchRecognizeReset()" style="display:none;">🗑️ 一键清除</button>
@@ -2482,12 +2492,12 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     </div>
 
     <div class="card" id="batchRecognizeTemplateCard" style="display:none;">
-      <div class="card-title"><span class="icon">📐</span> 第二步：用一张文件示范要识别的位置</div>
+      <div class="card-title" id="batchRecognizeTemplateTitle"><span class="icon">📐</span> 第二步：用一张文件示范要识别的位置</div>
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px;">
         <label for="batchRecognizeTemplateSelect" style="font-size:13px;color:var(--gray-600);font-weight:600;">用哪一张作为示范？</label>
         <select id="batchRecognizeTemplateSelect" class="ri" style="width:min(100%,420px);" onchange="batchRecognizeChooseTemplate(this.value)"></select>
       </div>
-      <div class="option-help" style="margin-bottom:12px;line-height:1.8;">
+      <div class="option-help" id="batchRecognizeTemplateHelp" style="margin-bottom:12px;line-height:1.8;">
         ① 点击“添加一段要识别的文字”　② 在示范文件上框住姓名、日期等文字　③ 系统会到其他文件的相同位置读取文字。<br>
         例：先框“公司名称”，再框“日期”，可生成“公司名称_日期.pdf”。
       </div>
@@ -2496,14 +2506,16 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       </div>
       <div class="recognize-field-toolbar">
         <button type="button" class="btn btn-outline" id="batchRecognizeAddFieldBtn" onclick="batchRecognizeAddTemplate()">＋ 添加一段要识别的文字</button>
-        <label for="batchRecognizeSeparator" style="font-size:12px;color:var(--gray-600);font-weight:600;">多段文字之间用什么隔开？</label>
-        <select id="batchRecognizeSeparator" class="ri" style="width:120px;" onchange="batchRecognizeSetSeparator()">
-          <option value="_" selected>下划线 _</option>
-          <option value="-">短横线 -</option>
-          <option value=" ">空格</option>
-          <option value="">不连接</option>
-        </select>
-        <span id="batchRecognizeFieldCount" style="font-size:12px;color:var(--gray-500);">已添加 0 / 5 段文字</span>
+        <span id="batchRecognizeSeparatorControls" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+          <label for="batchRecognizeSeparator" style="font-size:12px;color:var(--gray-600);font-weight:600;">多段文字之间用什么隔开？</label>
+          <select id="batchRecognizeSeparator" class="ri" style="width:120px;" onchange="batchRecognizeSetSeparator()">
+            <option value="_" selected>下划线 _</option>
+            <option value="-">短横线 -</option>
+            <option value=" ">空格</option>
+            <option value="">不连接</option>
+          </select>
+        </span>
+        <span id="batchRecognizeFieldCount" style="font-size:12px;color:var(--gray-500);">已添加 0 段文字</span>
       </div>
       <div class="recognize-field-list" id="batchRecognizeFieldList"></div>
       <div style="overflow:auto;text-align:center;max-height:620px;padding:8px;background:var(--gray-100);border-radius:10px;">
@@ -2526,9 +2538,9 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     </div>
 
     <div class="card" id="batchRecognizeResultCard" style="display:none;">
-      <div class="card-title"><span class="icon">✅</span> 第三步：核对名称并下载</div>
-      <div style="font-size:12px;color:var(--gray-500);margin-bottom:10px;">请先看“新文件名”是否正确；图片模糊时可能识别错，可以直接点击名称修改。</div>
-      <div class="recognize-replace-panel">
+      <div class="card-title" id="batchRecognizeResultTitle"><span class="icon">✅</span> 第三步：核对名称并下载</div>
+      <div id="batchRecognizeResultHelp" style="font-size:12px;color:var(--gray-500);margin-bottom:10px;">请先看“新文件名”是否正确；图片模糊时可能识别错，可以直接点击名称修改。</div>
+      <div class="recognize-replace-panel" id="batchRecognizeReplacePanel">
         <strong style="font-size:13px;color:var(--gray-700);">一键替换改名</strong>
         <input id="batchRecognizeReplaceFind" class="ri" style="width:220px;" placeholder="查找文字；* 表示任意文字">
         <span style="color:var(--gray-400);">→</span>
@@ -2538,12 +2550,17 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       </div>
       <div class="preview-table-wrap" style="max-height:420px;overflow:auto;">
         <table class="preview-table">
-          <thead><tr><th>#</th><th>原文件名</th><th>识别文字</th><th>新文件名</th></tr></thead>
+          <thead id="batchRecognizeResultHead"><tr><th>#</th><th>原文件名</th><th>识别文字</th><th>新文件名</th></tr></thead>
           <tbody id="batchRecognizeResultBody"></tbody>
         </table>
       </div>
+      <div id="batchRecognizeExcelExportOptions" style="display:none;margin-top:12px;align-items:center;gap:8px;flex-wrap:wrap;">
+        <label for="batchRecognizeExcelName" style="font-size:12px;color:var(--gray-600);font-weight:600;">Excel 文件名</label>
+        <input id="batchRecognizeExcelName" class="ri" value="批量框选提取结果" style="width:240px;">
+      </div>
       <div class="btn-row">
         <button class="btn btn-primary" onclick="batchRecognizeDownload()">📦 按新名称打包下载</button>
+        <button class="btn btn-primary" id="batchRecognizeExportExcelBtn" onclick="batchRecognizeExportXLSX()" style="display:none;">📥 导出 Excel</button>
         <button class="btn btn-outline" onclick="batchRecognizeStart()">↻ 重新识别</button>
       </div>
     </div>
@@ -2818,7 +2835,8 @@ function showTool(tool) {
   else if (tool === 'pdf-split') { document.getElementById('page-pdf-split').style.display = ''; }
   else if (tool === 'split') { document.getElementById('page-split').style.display = ''; }
   else if (tool === 'rename') { document.getElementById('page-rename').style.display = ''; }
-  else if (tool === 'recognize-rename') { document.getElementById('page-recognize-rename').style.display = ''; }
+  else if (tool === 'recognize-rename') { batchRecognizeSetMode('rename'); document.getElementById('page-recognize-rename').style.display = ''; }
+  else if (tool === 'extract') { batchRecognizeSetMode('extract'); document.getElementById('page-recognize-rename').style.display = ''; }
   else if (tool === 'flist') { document.getElementById('page-flist').style.display = ''; }
 }
 function showHome() {
@@ -2890,8 +2908,19 @@ function pdfSplitLoadScript(src){
   });
 }
 // ===== PaddleOCR.js（浏览器本地识别，文字层之后、Tesseract 之前）=====
-const PADDLE_OCR_MODULE_URL='https://cdn.jsdelivr.net/npm/@paddleocr/paddleocr-js@0.4.2/+esm';
-const PADDLE_OCR_WASM_BASE_URL='https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0/dist/';
+const PADDLE_OCR_MODULE_URLS=[
+  'https://cdn.jsdelivr.net/npm/@paddleocr/paddleocr-js@0.4.2/+esm',
+  'https://esm.sh/@paddleocr/paddleocr-js@0.4.2?bundle',
+  'https://unpkg.com/@paddleocr/paddleocr-js@0.4.2/dist/index.mjs?module'
+];
+const PADDLE_OCR_WASM_BASE_URLS=[
+  'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0/dist/',
+  'https://unpkg.com/onnxruntime-web@1.22.0/dist/'
+];
+const TESSERACT_SCRIPT_URLS=[
+  'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js',
+  'https://unpkg.com/tesseract.js@5.1.1/dist/tesseract.min.js'
+];
 let paddleOcrInitPromise=null;
 let paddleOcrUnavailable=false;
 async function ensurePaddleOcrLoaded(){
@@ -2899,29 +2928,41 @@ async function ensurePaddleOcrLoaded(){
   if(paddleOcrUnavailable)return false;
   if(paddleOcrInitPromise)return paddleOcrInitPromise;
   paddleOcrInitPromise=(async()=>{
-    try{
-      const module=await import(PADDLE_OCR_MODULE_URL);
-      if(!module?.PaddleOCR?.create)throw new Error('官方 PaddleOCR.js 模块未提供创建接口');
-      window.__pdfSplitPaddleEngine=await module.PaddleOCR.create({
-        lang:'ch',
-        ocrVersion:'PP-OCRv5',
-        textDetectionModelName:'PP-OCRv5_mobile_det',
-        textDetectionModelAsset:{url:'./ocr-models/PP-OCRv5_mobile_det_onnx_infer.tar'},
-        textRecognitionModelName:'PP-OCRv5_mobile_rec',
-        textRecognitionModelAsset:{url:'./ocr-models/PP-OCRv5_mobile_rec_onnx_infer.tar'},
-        ortOptions:{
-          backend:'wasm',
-          wasmPaths:PADDLE_OCR_WASM_BASE_URL,
-          numThreads:1,
-          simd:true
+    let lastError=null;
+    for(const moduleUrl of PADDLE_OCR_MODULE_URLS){
+      let module;
+      try{
+        module=await import(moduleUrl);
+        if(!module?.PaddleOCR?.create)throw new Error('官方 PaddleOCR.js 模块未提供创建接口');
+      }catch(e){
+        lastError=e;
+        continue;
+      }
+      for(const wasmBaseUrl of PADDLE_OCR_WASM_BASE_URLS){
+        try{
+          window.__pdfSplitPaddleEngine=await module.PaddleOCR.create({
+            lang:'ch',
+            ocrVersion:'PP-OCRv5',
+            textDetectionModelName:'PP-OCRv5_mobile_det',
+            textDetectionModelAsset:{url:'./ocr-models/PP-OCRv5_mobile_det_onnx_infer.tar'},
+            textRecognitionModelName:'PP-OCRv5_mobile_rec',
+            textRecognitionModelAsset:{url:'./ocr-models/PP-OCRv5_mobile_rec_onnx_infer.tar'},
+            ortOptions:{
+              backend:'wasm',
+              wasmPaths:wasmBaseUrl,
+              numThreads:1,
+              simd:true
+            }
+          });
+          return true;
+        }catch(e){
+          lastError=e;
         }
-      });
-      return true;
-    }catch(e){
-      console.warn('PaddleOCR.js 初始化失败，将使用 Tesseract',e);
-      paddleOcrUnavailable=true;
-      return false;
+      }
     }
+    console.warn('PaddleOCR.js 初始化失败，将使用 Tesseract',lastError);
+    paddleOcrUnavailable=true;
+    return false;
   })();
   return paddleOcrInitPromise;
 }
@@ -2980,19 +3021,20 @@ async function ensureTesseractLoaded(){
   if(window.__pdfSplitTesseractWorker)return true;
   if(tesseractInitPromise)return tesseractInitPromise;
   tesseractInitPromise=(async()=>{
-    try{
-      if(!window.Tesseract){
-        await pdfSplitLoadScript('https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js');
+    let lastError=null;
+    for(const scriptUrl of TESSERACT_SCRIPT_URLS){
+      try{
+        if(!window.Tesseract)await pdfSplitLoadScript(scriptUrl);
+        if(!window.Tesseract)throw new Error('Tesseract.js 模块未加载');
+        const worker=await Tesseract.createWorker('chi_sim+eng');
+        window.__pdfSplitTesseractWorker=worker;
+        return true;
+      }catch(e){
+        lastError=e;
       }
-      if(!window.Tesseract)return false;
-      // 使用默认 OEM/PSM，Tesseract 内部自动选择最佳引擎和版面分析模式
-      const worker=await Tesseract.createWorker('chi_sim+eng');
-      window.__pdfSplitTesseractWorker=worker;
-      return true;
-    }catch(e){
-      console.warn('Tesseract.js 加载失败',e);
-      return false;
     }
+    console.warn('Tesseract.js 加载失败',lastError);
+    return false;
   })();
   return tesseractInitPromise;
 }
@@ -3013,7 +3055,7 @@ function pdfSplitFlattenTesseractWords(data){
   return words;
 }
 async function pdfSplitRunTesseractOcr(canvas,parameters){
-  if(!await ensureTesseractLoaded())return {lines:[],blocks:[],raw:null};
+  if(!await ensureTesseractLoaded())return {lines:[],blocks:[],raw:null,error:'Tesseract 资源加载失败'};
   try{
     const worker=window.__pdfSplitTesseractWorker;
     if(parameters&&worker.setParameters)await worker.setParameters(parameters);
@@ -3025,7 +3067,7 @@ async function pdfSplitRunTesseractOcr(canvas,parameters){
     return {lines,words,blocks:[],raw:data};
   }catch(e){
     console.warn('Tesseract 识别失败',e);
-    return {lines:[],blocks:[],raw:null};
+    return {lines:[],blocks:[],raw:null,error:e?.message||String(e)};
   }
 }
 function pdfSplitCreatePartyNameOcrCanvas(canvas){
@@ -8655,6 +8697,48 @@ var batchRecognizeSelecting=false;
 var batchRecognizeStartPoint=null;
 var batchRecognizeRunId=0;
 var batchRecognizeTemplateIndex=0;
+var batchRecognizeMode='rename';
+
+function batchRecognizeSetMode(mode){
+  batchRecognizeMode=mode==='extract'?'extract':'rename';
+  var extract=batchRecognizeMode==='extract';
+  var setText=function(id,text){var el=document.getElementById(id);if(el)el.textContent=text;};
+  var setDisplay=function(id,display){var el=document.getElementById(id);if(el)el.style.display=display;};
+  setText('batchRecognizeTitle',extract?'📊 批量框选提取':'🔎 批量识别命名');
+  setText('batchRecognizeUploadTitle',extract?'📁 第一步：选择要提取的 PDF / 图片':'📁 第一步：选择同版式的 PDF / 图片');
+  setText('batchRecognizeUploadHint',extract
+    ? '上传版式相同或相近的文件；版式差异太大时请分批处理。PDF 使用第一页。'
+    : '上传后任选一张作为示范；PDF 使用第一页。其他文件的版式和方向要与示范一致。');
+  setText('batchRecognizeTemplateTitle',extract?'📐 第二步：用一张文件定义 Excel 列':'📐 第二步：用一张文件示范要识别的位置');
+  setText('batchRecognizeTemplateHelp',extract
+    ? '① 点击“添加一列”　② 在示范文件上框住一个字段　③ 给这一列填写名称和格式。金额、税额等列选择“数字”，例如 ¥38.42 会导出为 38.42。每个文件最终对应 Excel 一行。'
+    : '① 点击“添加一段要识别的文字”　② 在示范文件上框住姓名、日期等文字　③ 系统会到其他文件的相同位置读取文字。例：先框“公司名称”，再框“日期”，可生成“公司名称_日期.pdf”。');
+  setText('batchRecognizeResultTitle',extract?'✅ 第三步：核对结果并导出':'✅ 第三步：核对名称并下载');
+  setText('batchRecognizeResultHelp',extract
+    ? '每个框对应 Excel 的一列；识别结果可以直接修改，确认无误后导出。'
+    : '请先看“新文件名”是否正确；图片模糊时可能识别错，可以直接点击名称修改。');
+  setText('batchRecognizeAddFieldBtn',extract?'＋ 添加一列':'＋ 添加一段要识别的文字');
+  setText('batchRecognizeStartBtn',extract?'📊 开始批量提取':'✨ 开始批量识别');
+  setDisplay('batchRecognizeSeparatorControls',extract?'none':'flex');
+  setDisplay('batchRecognizeReplacePanel',extract?'none':'');
+  setDisplay('batchRecognizeExportExcelBtn',extract?'':'none');
+  setDisplay('batchRecognizeExcelExportOptions',extract?'flex':'none');
+  var download=document.querySelector('#batchRecognizeResultCard button[onclick="batchRecognizeDownload()"]');
+  if(download)download.style.display=extract?'none':'';
+  if(batchRecognizeTemplates.length)batchRecognizeRenderFieldList();
+  if(batchRecognizeResults.length)batchRecognizeRenderResults();
+}
+function batchRecognizeColumnName(index){
+  var n=Math.max(0,Number(index)||0),name='';
+  do{name=String.fromCharCode(65+(n%26))+name;n=Math.floor(n/26)-1;}while(n>=0);
+  return name;
+}
+function batchRecognizeDefaultTemplateLabel(index){
+  return batchRecognizeMode==='extract'?'列 '+batchRecognizeColumnName(index):'第 '+(index+1)+' 段文字';
+}
+function batchRecognizeTemplateLimitReached(){
+  return batchRecognizeMode!=='extract'&&batchRecognizeTemplates.length>=5;
+}
 
 function batchRecognizeIsSupported(file){
   return file && (/^image\//i.test(file.type)||file.type==='application/pdf'||/\.(pdf|jpe?g|png|webp|bmp|gif)$/i.test(file.name||''));
@@ -8775,7 +8859,7 @@ async function batchRecognizeLoadTemplate(){
     if(!batchRecognizeTemplates.length)batchRecognizeEditingTemplateIndex=0;
     batchRecognizeUpdateBoxes();
     batchRecognizeRenderFieldList();
-    status.textContent='当前示范：'+batchRecognizeFiles[loadIndex].name+'。请拖动鼠标框住第 1 段要识别的文字';
+    status.textContent='当前示范：'+batchRecognizeFiles[loadIndex].name+'。'+(batchRecognizeMode==='extract'?'请添加并框选第 1 列':'请拖动鼠标框住第 1 段要识别的文字');
     card.scrollIntoView({behavior:'smooth',block:'start'});
   }catch(err){
     status.textContent='模板读取失败：'+err.message;
@@ -8802,15 +8886,15 @@ function batchRecognizeUpdateBoxes(){
   var layer=document.getElementById('batchRecognizeBoxes');
   if(!layer)return;
   var boxes=batchRecognizeTemplates.map(function(template,index){
-    return {template:template,index:index,label:template.label||('第 '+(index+1)+' 段文字')};
+    return {template:template,index:index,label:template.label||batchRecognizeDefaultTemplateLabel(index)};
   });
   if(batchRecognizeDraft){
     boxes.push({
       template:batchRecognizeDraft,
       index:Math.max(0,batchRecognizeEditingTemplateIndex),
       label:batchRecognizeEditingTemplateIndex<batchRecognizeTemplates.length
-        ? (batchRecognizeTemplates[batchRecognizeEditingTemplateIndex].label||('第 '+(batchRecognizeEditingTemplateIndex+1)+' 段文字'))
-        : '第 '+(batchRecognizeTemplates.length+1)+' 段文字',
+        ? (batchRecognizeTemplates[batchRecognizeEditingTemplateIndex].label||batchRecognizeDefaultTemplateLabel(batchRecognizeEditingTemplateIndex))
+        : batchRecognizeDefaultTemplateLabel(batchRecognizeTemplates.length),
       draft:true
     });
   }
@@ -8824,15 +8908,25 @@ function batchRecognizeRenderFieldList(){
   var list=document.getElementById('batchRecognizeFieldList');
   var count=document.getElementById('batchRecognizeFieldCount');
   var add=document.getElementById('batchRecognizeAddFieldBtn');
-  if(count)count.textContent='已添加 '+batchRecognizeTemplates.length+' / 5 段文字';
-  if(add)add.disabled=batchRecognizeTemplates.length>=5;
+  if(count)count.textContent=batchRecognizeMode==='extract'
+    ? '已添加 '+batchRecognizeTemplates.length+' 列'
+    : '已添加 '+batchRecognizeTemplates.length+' / 5 段文字';
+  if(add)add.disabled=batchRecognizeTemplateLimitReached();
   if(!list)return;
   list.innerHTML=batchRecognizeTemplates.map(function(template,index){
     var color=batchRecognizeTemplateColor(index);
+    var selectedFormat=template.format==='number'?'number':'text';
+    var formatControl=batchRecognizeMode==='extract'
+      ? '<label style="font-size:11px;color:var(--gray-500);display:flex;align-items:center;gap:4px;">格式<select class="recognize-field-format" onchange="batchRecognizeSetTemplateFormat('+index+',this.value)" aria-label="第 '+(index+1)+' 列格式">'+
+          '<option value="text"'+(selectedFormat==='text'?' selected':'')+'>文本</option>'+
+          '<option value="number"'+(selectedFormat==='number'?' selected':'')+'>数字（去掉 ¥ / ￥ / 元）</option>'+
+        '</select></label>'
+      : '';
     return '<div class="recognize-field-item">'+
       '<span class="recognize-field-color" style="background:'+color+';"></span>'+
       '<strong style="font-size:12px;color:var(--gray-600);">字段 '+(index+1)+'</strong>'+
-      '<input class="recognize-field-label" value="'+renameAttrEsc(template.label||('第 '+(index+1)+' 段文字'))+'" oninput="batchRecognizeSetTemplateLabel('+index+',this.value)" aria-label="第 '+(index+1)+' 段文字的名称">'+
+      '<input class="recognize-field-label" value="'+renameAttrEsc(template.label||batchRecognizeDefaultTemplateLabel(index))+'" oninput="batchRecognizeSetTemplateLabel('+index+',this.value)" aria-label="'+renameAttrEsc(batchRecognizeMode==='extract'?'第 '+(index+1)+' 列名称':'第 '+(index+1)+' 段文字的名称')+'">'+
+      formatControl+
       '<span style="font-size:11px;color:var(--gray-400);">左 '+Math.round(template.x*100)+'% · 上 '+Math.round(template.y*100)+'%</span>'+
       '<div class="recognize-field-actions">'+
         '<button type="button" onclick="batchRecognizeReselectTemplate('+index+')">重新框选</button>'+
@@ -8843,10 +8937,15 @@ function batchRecognizeRenderFieldList(){
   }).join('');
 }
 function batchRecognizeAddTemplate(){
-  if(batchRecognizeTemplates.length>=5){showToast('最多添加 5 段要识别的文字','info');return;}
+  if(batchRecognizeTemplateLimitReached()){
+    showToast('最多添加 5 段要识别的文字','info');
+    return;
+  }
   batchRecognizeEditingTemplateIndex=batchRecognizeTemplates.length;
   batchRecognizeDraft=null;
-  document.getElementById('batchRecognizeTemplateStatus').textContent='请在示范文件上框住第 '+(batchRecognizeTemplates.length+1)+' 段要识别的文字';
+  document.getElementById('batchRecognizeTemplateStatus').textContent=batchRecognizeMode==='extract'
+    ? '请在示范文件上框住 '+batchRecognizeDefaultTemplateLabel(batchRecognizeTemplates.length)+' 的内容'
+    : '请在示范文件上框住第 '+(batchRecognizeTemplates.length+1)+' 段要识别的文字';
 }
 function batchRecognizeReselectTemplate(index){
   if(!batchRecognizeTemplates[index])return;
@@ -8856,8 +8955,13 @@ function batchRecognizeReselectTemplate(index){
 }
 function batchRecognizeSetTemplateLabel(index,value){
   if(!batchRecognizeTemplates[index])return;
-  batchRecognizeTemplates[index].label=String(value||'').trim()||('第 '+(index+1)+' 段文字');
+  batchRecognizeTemplates[index].label=String(value||'').trim()||batchRecognizeDefaultTemplateLabel(index);
   batchRecognizeUpdateBoxes();
+}
+function batchRecognizeSetTemplateFormat(index,value){
+  if(!batchRecognizeTemplates[index])return;
+  batchRecognizeTemplates[index].format=value==='number'?'number':'text';
+  if(batchRecognizeMode==='extract'&&batchRecognizeResults.length)batchRecognizeRenderExtractResults();
 }
 function batchRecognizeMoveTemplate(index,direction){
   var target=index+direction;
@@ -8904,18 +9008,19 @@ function batchRecognizeFinishSelection(){
   var index=batchRecognizeEditingTemplateIndex;
   if(index<0)index=batchRecognizeTemplates.length;
   if(index<batchRecognizeTemplates.length){
-    var label=batchRecognizeTemplates[index].label;
-    batchRecognizeTemplates[index]=Object.assign({label:label},batchRecognizeDraft);
-  }else if(batchRecognizeTemplates.length<5){
-    batchRecognizeTemplates.push(Object.assign({label:'第 '+(batchRecognizeTemplates.length+1)+' 段文字'},batchRecognizeDraft));
+    var current=batchRecognizeTemplates[index];
+    batchRecognizeTemplates[index]=Object.assign({label:current.label,format:current.format||'text'},batchRecognizeDraft);
+  }else if(!batchRecognizeTemplateLimitReached()){
+    batchRecognizeTemplates.push(Object.assign({label:batchRecognizeDefaultTemplateLabel(batchRecognizeTemplates.length),format:'text'},batchRecognizeDraft));
   }
   batchRecognizeDraft=null;
   batchRecognizeEditingTemplateIndex=-1;
   batchRecognizeInvalidateResults();
   batchRecognizeUpdateBoxes();
   batchRecognizeRenderFieldList();
-  document.getElementById('batchRecognizeTemplateStatus').textContent=
-    '已添加 '+batchRecognizeTemplates.length+' 段文字。可以继续添加，或点击“开始批量识别”';
+  document.getElementById('batchRecognizeTemplateStatus').textContent=batchRecognizeMode==='extract'
+    ? '已添加 '+batchRecognizeTemplates.length+' 列。可以继续添加，或点击“开始批量提取”'
+    : '已添加 '+batchRecognizeTemplates.length+' 段文字。可以继续添加，或点击“开始批量识别”';
   document.getElementById('batchRecognizeStartBtn').disabled=false;
 }
 function batchRecognizeCropScale(width,height){
@@ -9015,13 +9120,20 @@ async function batchRecognizeOcr(crop,enhanced){
   var paddle=await pdfSplitRunPaddleOcr(crop);
   var paddleText=batchRecognizeCleanText((paddle.lines||[]).join(' '));
   if(paddleText)return {text:paddleText,source:'PaddleOCR'};
+  var errors=[];
+  if(paddle.error)errors.push('PaddleOCR：'+paddle.error);
   var tess=await pdfSplitRunTesseractOcr(enhanced||crop,{tessedit_pageseg_mode:'6',preserve_interword_spaces:'1'});
   var tessText=batchRecognizeCleanText((tess.lines||[]).join(' '));
   if(!tessText&&enhanced&&enhanced!==crop){
     tess=await pdfSplitRunTesseractOcr(crop,{tessedit_pageseg_mode:'6',preserve_interword_spaces:'1'});
     tessText=batchRecognizeCleanText((tess.lines||[]).join(' '));
   }
-  return {text:tessText,source:tessText?'Tesseract':'未识别'};
+  if(tess.error)errors.push('Tesseract：'+tess.error);
+  return {
+    text:tessText,
+    source:tessText?'Tesseract':(errors.length?'OCR资源加载失败':'未识别'),
+    error:errors.join('；')
+  };
 }
 async function batchRecognizeStart(){
   if(!batchRecognizeFiles.length){showToast('请先选择文件','error');return;}
@@ -9036,7 +9148,7 @@ async function batchRecognizeStart(){
   startBtn.disabled=true;
   batchRecognizeResults=[];
   try{
-    progressText.textContent='准备按“PDF文字层 → 本地 PaddleOCR → Tesseract”识别；首次使用会下载模型…';
+    progressText.textContent='准备按“PDF文字层 → 本地 PaddleOCR → Tesseract”'+(batchRecognizeMode==='extract'?'提取':'识别')+'；首次使用会下载模型…';
     var allTexts=[],allSources=[],previews=[];
     var separator=document.getElementById('batchRecognizeSeparator').value;
     var totalSteps=batchRecognizeFiles.length*batchRecognizeTemplates.length;
@@ -9082,12 +9194,12 @@ async function batchRecognizeStart(){
       return {file:file,texts:allTexts[i],sources:allSources[i],text:texts[i],name:names[i],previewUrl:previews[i]};
     });
     progressBar.style.width='100%';
-    progressText.textContent='识别完成，共 '+batchRecognizeResults.length+' 个文件';
+    progressText.textContent=(batchRecognizeMode==='extract'?'提取完成，共 ':'识别完成，共 ')+batchRecognizeResults.length+' 个文件';
     document.getElementById('batchRecognizeReplaceStatus').textContent='';
     batchRecognizeRenderResults();
     document.getElementById('batchRecognizeResultCard').style.display='';
     document.getElementById('batchRecognizeResultCard').scrollIntoView({behavior:'smooth',block:'start'});
-    showToast('批量识别完成，请核对文件名','success');
+    showToast(batchRecognizeMode==='extract'?'批量提取完成，请核对结果':'批量识别完成，请核对文件名','success');
   }catch(err){
     showToast(err.message||'识别失败','error');
     progressText.textContent='识别失败：'+(err.message||err);
@@ -9162,7 +9274,109 @@ function batchRecognizeReplaceAll(){
   status.textContent='已替换 '+changed+' 个文件名';
   showToast('已批量替换 '+changed+' 个文件名','success');
 }
+function batchRecognizeParseNumber(value){
+  var text=value==null?'':String(value).trim();
+  if(!text)return null;
+  var parenthesized=/^\(.*\)$/.test(text);
+  text=text.replace(/^\(|\)$/g,'')
+    .replace(/人民币/g,'')
+    .replace(/[￥¥]/g,'')
+    .replace(/元/g,'')
+    .replace(/[\s,，]/g,'')
+    .replace(/．/g,'.');
+  if(!/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/.test(text))return null;
+  var number=Number(text);
+  if(!Number.isFinite(number))return null;
+  return parenthesized?-Math.abs(number):number;
+}
+function batchRecognizeFormatFieldValue(value,template){
+  var raw=value==null?'':String(value);
+  if(template&&template.format==='number'){
+    var number=batchRecognizeParseNumber(raw);
+    return number===null?raw:number;
+  }
+  return raw;
+}
+function batchRecognizeBuildExcelRows(results,templates){
+  var templateList=templates||[];
+  var headers=['原文件名'];
+  templateList.forEach(function(template,index){
+    headers.push(String(template?.label||batchRecognizeDefaultTemplateLabel(index)));
+  });
+  headers.push('识别状态','识别来源');
+  var rows=(results||[]).map(function(result){
+    var texts=Array.isArray(result.texts)?result.texts:[result.text||''];
+    var sources=Array.isArray(result.sources)?result.sources:[];
+    var needsReview=false;
+    templateList.forEach(function(template,index){
+      var rawValue=String(texts[index]??'').trim();
+      var value=batchRecognizeFormatFieldValue(texts[index],template);
+      var source=String(sources[index]||'');
+      if(!rawValue||/失败|未识别|资源加载失败/.test(source)||(template?.format==='number'&&typeof value!=='number'))needsReview=true;
+    });
+    var uniqueSources=[];
+    sources.forEach(function(source){
+      if(source&&!uniqueSources.includes(source))uniqueSources.push(source);
+    });
+    return [result.file?.name||'']
+      .concat(templateList.map(function(template,index){return batchRecognizeFormatFieldValue(texts[index],template);}))
+      .concat([needsReview?'需核对':'已识别',uniqueSources.join('、')]);
+  });
+  return {headers:headers,rows:rows};
+}
+function batchRecognizeSetFieldValue(index,fieldIndex,value){
+  var result=batchRecognizeResults[index];
+  if(!result)return;
+  if(!Array.isArray(result.texts))result.texts=[];
+  result.texts[fieldIndex]=String(value||'').trim();
+  result.text=batchRecognizeJoinTexts(result.texts,document.getElementById('batchRecognizeSeparator')?.value||'_');
+  batchRecognizeRenderExtractResults();
+}
+function batchRecognizeRenderExtractResults(){
+  var body=document.getElementById('batchRecognizeResultBody');
+  var head=document.getElementById('batchRecognizeResultHead');
+  if(!body||!head)return;
+  var data=batchRecognizeBuildExcelRows(batchRecognizeResults,batchRecognizeTemplates);
+  head.innerHTML='<tr><th>#</th><th>原文件名</th>'+batchRecognizeTemplates.map(function(template,index){
+    return '<th>'+renameEsc(String(template?.label||batchRecognizeDefaultTemplateLabel(index)))+'</th>';
+  }).join('')+'<th>识别状态</th><th>识别来源</th></tr>';
+  body.innerHTML=batchRecognizeResults.map(function(result,i){
+    var texts=Array.isArray(result.texts)?result.texts:[];
+    var cells=batchRecognizeTemplates.map(function(template,index){
+      var value=batchRecognizeFormatFieldValue(texts[index],template);
+      return '<td><textarea class="batch-extract-cell-input" rows="2" onchange="batchRecognizeSetFieldValue('+i+','+index+',this.value)" title="识别结果可直接修改">'+renameEsc(String(value))+'</textarea></td>';
+    }).join('');
+    var status=data.rows[i][data.headers.length-2];
+    var sources=data.rows[i][data.headers.length-1];
+    return '<tr><td>'+(i+1)+'</td><td><div class="recognize-original-cell">'+
+      '<button type="button" class="recognize-preview-thumb" onclick="batchRecognizeOpenPreview('+i+')" aria-label="预览 '+renameAttrEsc(result.file.name)+'"><img src="'+renameAttrEsc(result.previewUrl||'')+'" alt=""></button>'+
+      '<span class="recognize-original-name">'+renameEsc(result.file.name)+'</span></div></td>'+cells+
+      '<td>'+renameEsc(status)+'</td><td>'+renameEsc(sources)+'</td></tr>';
+  }).join('');
+}
+function batchRecognizeExportXLSX(){
+  if(!batchRecognizeResults.length){showToast('请先完成识别','error');return;}
+  var data=batchRecognizeBuildExcelRows(batchRecognizeResults,batchRecognizeTemplates);
+  var ws=XLSX.utils.aoa_to_sheet([data.headers].concat(data.rows));
+  ws['!cols']=data.headers.map(function(header,index){
+    var max=String(header||'').length;
+    data.rows.forEach(function(row){
+      String(row[index]??'').split('\n').forEach(function(part){max=Math.max(max,part.length);});
+    });
+    return {wch:Math.min(32,Math.max(12,max+2))};
+  });
+  var wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,ws,'识别结果');
+  var nameInput=document.getElementById('batchRecognizeExcelName');
+  var fileName=String(nameInput?.value||'批量框选提取结果').trim().replace(/\.xlsx$/i,'')||'批量框选提取结果';
+  XLSX.writeFile(wb,fileName+'.xlsx');
+  showToast('已导出 '+batchRecognizeResults.length+' 行 Excel','success');
+}
 function batchRecognizeRenderResults(){
+  if(batchRecognizeMode==='extract'){
+    batchRecognizeRenderExtractResults();
+    return;
+  }
   var body=document.getElementById('batchRecognizeResultBody');
   if(!body)return;
   body.innerHTML=batchRecognizeResults.map(function(result,i){
@@ -9246,7 +9460,7 @@ function batchRecognizeReset(){
   });
   var replaceStatus=document.getElementById('batchRecognizeReplaceStatus');if(replaceStatus)replaceStatus.textContent='';
   var fieldList=document.getElementById('batchRecognizeFieldList');if(fieldList)fieldList.innerHTML='';
-  var fieldCount=document.getElementById('batchRecognizeFieldCount');if(fieldCount)fieldCount.textContent='已添加 0 / 5 段文字';
+  var fieldCount=document.getElementById('batchRecognizeFieldCount');if(fieldCount)fieldCount.textContent=batchRecognizeMode==='extract'?'已添加 0 列':'已添加 0 / 5 段文字';
   var addField=document.getElementById('batchRecognizeAddFieldBtn');if(addField)addField.disabled=false;
   var separator=document.getElementById('batchRecognizeSeparator');if(separator)separator.value='_';
   var previewModal=document.getElementById('batchRecognizePreviewModal');if(previewModal)previewModal.style.display='none';
@@ -9294,7 +9508,10 @@ function batchRecognizeReset(){
     stage.addEventListener('pointerdown',function(e){
       if(!batchRecognizeSourceCanvas)return;
       if(batchRecognizeEditingTemplateIndex<0){
-        if(batchRecognizeTemplates.length>=5){showToast('最多添加 5 段要识别的文字','info');return;}
+        if(batchRecognizeTemplateLimitReached()){
+          showToast('最多添加 5 段要识别的文字','info');
+          return;
+        }
         batchRecognizeEditingTemplateIndex=batchRecognizeTemplates.length;
       }
       e.preventDefault();
