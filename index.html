@@ -2890,8 +2890,19 @@ function pdfSplitLoadScript(src){
   });
 }
 // ===== PaddleOCR.js（浏览器本地识别，文字层之后、Tesseract 之前）=====
-const PADDLE_OCR_MODULE_URL='https://cdn.jsdelivr.net/npm/@paddleocr/paddleocr-js@0.4.2/+esm';
-const PADDLE_OCR_WASM_BASE_URL='https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0/dist/';
+const PADDLE_OCR_MODULE_URLS=[
+  'https://cdn.jsdelivr.net/npm/@paddleocr/paddleocr-js@0.4.2/+esm',
+  'https://esm.sh/@paddleocr/paddleocr-js@0.4.2?bundle',
+  'https://unpkg.com/@paddleocr/paddleocr-js@0.4.2/dist/index.mjs?module'
+];
+const PADDLE_OCR_WASM_BASE_URLS=[
+  'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0/dist/',
+  'https://unpkg.com/onnxruntime-web@1.22.0/dist/'
+];
+const TESSERACT_SCRIPT_URLS=[
+  'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js',
+  'https://unpkg.com/tesseract.js@5.1.1/dist/tesseract.min.js'
+];
 let paddleOcrInitPromise=null;
 let paddleOcrUnavailable=false;
 async function ensurePaddleOcrLoaded(){
@@ -2899,29 +2910,41 @@ async function ensurePaddleOcrLoaded(){
   if(paddleOcrUnavailable)return false;
   if(paddleOcrInitPromise)return paddleOcrInitPromise;
   paddleOcrInitPromise=(async()=>{
-    try{
-      const module=await import(PADDLE_OCR_MODULE_URL);
-      if(!module?.PaddleOCR?.create)throw new Error('官方 PaddleOCR.js 模块未提供创建接口');
-      window.__pdfSplitPaddleEngine=await module.PaddleOCR.create({
-        lang:'ch',
-        ocrVersion:'PP-OCRv5',
-        textDetectionModelName:'PP-OCRv5_mobile_det',
-        textDetectionModelAsset:{url:'./ocr-models/PP-OCRv5_mobile_det_onnx_infer.tar'},
-        textRecognitionModelName:'PP-OCRv5_mobile_rec',
-        textRecognitionModelAsset:{url:'./ocr-models/PP-OCRv5_mobile_rec_onnx_infer.tar'},
-        ortOptions:{
-          backend:'wasm',
-          wasmPaths:PADDLE_OCR_WASM_BASE_URL,
-          numThreads:1,
-          simd:true
+    let lastError=null;
+    for(const moduleUrl of PADDLE_OCR_MODULE_URLS){
+      let module;
+      try{
+        module=await import(moduleUrl);
+        if(!module?.PaddleOCR?.create)throw new Error('官方 PaddleOCR.js 模块未提供创建接口');
+      }catch(e){
+        lastError=e;
+        continue;
+      }
+      for(const wasmBaseUrl of PADDLE_OCR_WASM_BASE_URLS){
+        try{
+          window.__pdfSplitPaddleEngine=await module.PaddleOCR.create({
+            lang:'ch',
+            ocrVersion:'PP-OCRv5',
+            textDetectionModelName:'PP-OCRv5_mobile_det',
+            textDetectionModelAsset:{url:'./ocr-models/PP-OCRv5_mobile_det_onnx_infer.tar'},
+            textRecognitionModelName:'PP-OCRv5_mobile_rec',
+            textRecognitionModelAsset:{url:'./ocr-models/PP-OCRv5_mobile_rec_onnx_infer.tar'},
+            ortOptions:{
+              backend:'wasm',
+              wasmPaths:wasmBaseUrl,
+              numThreads:1,
+              simd:true
+            }
+          });
+          return true;
+        }catch(e){
+          lastError=e;
         }
-      });
-      return true;
-    }catch(e){
-      console.warn('PaddleOCR.js 初始化失败，将使用 Tesseract',e);
-      paddleOcrUnavailable=true;
-      return false;
+      }
     }
+    console.warn('PaddleOCR.js 初始化失败，将使用 Tesseract',lastError);
+    paddleOcrUnavailable=true;
+    return false;
   })();
   return paddleOcrInitPromise;
 }
@@ -2980,19 +3003,20 @@ async function ensureTesseractLoaded(){
   if(window.__pdfSplitTesseractWorker)return true;
   if(tesseractInitPromise)return tesseractInitPromise;
   tesseractInitPromise=(async()=>{
-    try{
-      if(!window.Tesseract){
-        await pdfSplitLoadScript('https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js');
+    let lastError=null;
+    for(const scriptUrl of TESSERACT_SCRIPT_URLS){
+      try{
+        if(!window.Tesseract)await pdfSplitLoadScript(scriptUrl);
+        if(!window.Tesseract)throw new Error('Tesseract.js 模块未加载');
+        const worker=await Tesseract.createWorker('chi_sim+eng');
+        window.__pdfSplitTesseractWorker=worker;
+        return true;
+      }catch(e){
+        lastError=e;
       }
-      if(!window.Tesseract)return false;
-      // 使用默认 OEM/PSM，Tesseract 内部自动选择最佳引擎和版面分析模式
-      const worker=await Tesseract.createWorker('chi_sim+eng');
-      window.__pdfSplitTesseractWorker=worker;
-      return true;
-    }catch(e){
-      console.warn('Tesseract.js 加载失败',e);
-      return false;
     }
+    console.warn('Tesseract.js 加载失败',lastError);
+    return false;
   })();
   return tesseractInitPromise;
 }
@@ -3013,7 +3037,7 @@ function pdfSplitFlattenTesseractWords(data){
   return words;
 }
 async function pdfSplitRunTesseractOcr(canvas,parameters){
-  if(!await ensureTesseractLoaded())return {lines:[],blocks:[],raw:null};
+  if(!await ensureTesseractLoaded())return {lines:[],blocks:[],raw:null,error:'Tesseract 资源加载失败'};
   try{
     const worker=window.__pdfSplitTesseractWorker;
     if(parameters&&worker.setParameters)await worker.setParameters(parameters);
@@ -3025,7 +3049,7 @@ async function pdfSplitRunTesseractOcr(canvas,parameters){
     return {lines,words,blocks:[],raw:data};
   }catch(e){
     console.warn('Tesseract 识别失败',e);
-    return {lines:[],blocks:[],raw:null};
+    return {lines:[],blocks:[],raw:null,error:e?.message||String(e)};
   }
 }
 function pdfSplitCreatePartyNameOcrCanvas(canvas){
@@ -9015,13 +9039,20 @@ async function batchRecognizeOcr(crop,enhanced){
   var paddle=await pdfSplitRunPaddleOcr(crop);
   var paddleText=batchRecognizeCleanText((paddle.lines||[]).join(' '));
   if(paddleText)return {text:paddleText,source:'PaddleOCR'};
+  var errors=[];
+  if(paddle.error)errors.push('PaddleOCR：'+paddle.error);
   var tess=await pdfSplitRunTesseractOcr(enhanced||crop,{tessedit_pageseg_mode:'6',preserve_interword_spaces:'1'});
   var tessText=batchRecognizeCleanText((tess.lines||[]).join(' '));
   if(!tessText&&enhanced&&enhanced!==crop){
     tess=await pdfSplitRunTesseractOcr(crop,{tessedit_pageseg_mode:'6',preserve_interword_spaces:'1'});
     tessText=batchRecognizeCleanText((tess.lines||[]).join(' '));
   }
-  return {text:tessText,source:tessText?'Tesseract':'未识别'};
+  if(tess.error)errors.push('Tesseract：'+tess.error);
+  return {
+    text:tessText,
+    source:tessText?'Tesseract':(errors.length?'OCR资源加载失败':'未识别'),
+    error:errors.join('；')
+  };
 }
 async function batchRecognizeStart(){
   if(!batchRecognizeFiles.length){showToast('请先选择文件','error');return;}
