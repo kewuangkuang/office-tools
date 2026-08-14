@@ -72,7 +72,7 @@ function loadPaddleResultAdapter(html) {
   assert.ok(start >= 0 && end > start, 'PaddleOCR result adapter should exist before OCR runner');
   const context = {};
   vm.createContext(context);
-  vm.runInContext(`${html.slice(start, end)}\nthis.api={pdfSplitNormalizePaddleResult};`, context);
+  vm.runInContext(`${html.slice(start, end)}\nthis.api={pdfSplitNormalizePaddleResult,pdfSplitPaddleResultForCrop};`, context);
   return context.api;
 }
 
@@ -83,6 +83,16 @@ function loadFixedFieldBoxes(html) {
   const context = {};
   vm.createContext(context);
   vm.runInContext(`${html.slice(start, end)}\nthis.api={pdfSplitReceiptFixedFieldBoxes};`, context);
+  return context.api;
+}
+
+function loadReceiptCropHelpers(html) {
+  const start = html.indexOf('function pdfSplitGroupReceiptBoundaryRows(');
+  const end = html.indexOf('\nfunction pdfSplitDetectReceiptGapsFromImage(', start);
+  assert.ok(start >= 0 && end > start, 'automatic receipt crop helpers should exist before image detection');
+  const context = {};
+  vm.createContext(context);
+  vm.runInContext(`${html.slice(start, end)}\nthis.api={pdfSplitGroupReceiptBoundaryRows,pdfSplitBuildReceiptCropsFromBoundaries,pdfSplitBuildReceiptCropsFromFrameRows};`, context);
   return context.api;
 }
 
@@ -290,6 +300,23 @@ test('official PaddleOCR.js items become text lines and coordinate words', () =>
   assert.equal(result.ok, true);
 });
 
+test('page-level PaddleOCR results can be reused for individual receipt crops', () => {
+  const { pdfSplitPaddleResultForCrop: forCrop } = loadPaddleResultAdapter(source());
+  const result = forCrop({
+    lines: ['付款人名称 甲公司', '不属于本张回单'],
+    words: [
+      { text: '付款人名称', bbox: { x0: 20, y0: 20, x1: 110, y1: 42 } },
+      { text: '甲公司', bbox: { x0: 120, y0: 20, x1: 180, y1: 42 } },
+      { text: '其他回单', bbox: { x0: 20, y0: 180, x1: 100, y1: 202 } }
+    ]
+  }, { x: 10, y: 10, w: 220, h: 80 });
+  assert.deepEqual(JSON.parse(JSON.stringify(result.lines)), ['付款人名称 甲公司']);
+  assert.deepEqual(JSON.parse(JSON.stringify(result.words)), [
+    { text: '付款人名称', bbox: { x0: 10, y0: 10, x1: 100, y1: 32 } },
+    { text: '甲公司', bbox: { x0: 110, y0: 10, x1: 170, y1: 32 } }
+  ]);
+});
+
 test('empty top-level Tesseract words fall back to nested block coordinates', () => {
   const { pdfSplitFlattenTesseractWords: flatten } = loadTesseractWordAdapter(source());
   const words = flatten({
@@ -364,6 +391,65 @@ test('fixed field canvases detect table rows before choosing OCR boxes', () => {
   assert.match(creator, /pdfSplitReceiptFixedFieldBoxes\(canvas\.width,canvas\.height,tableRows\)/);
 });
 
+test('automatic receipt splitting supports different receipt counts on each page', () => {
+  const { pdfSplitGroupReceiptBoundaryRows: group, pdfSplitBuildReceiptCropsFromBoundaries: build, pdfSplitBuildReceiptCropsFromFrameRows: buildFrames } = loadReceiptCropHelpers(source());
+  const pageOneRows = group([300, 301, 302, 600, 601, 900, 901], 1000);
+  const pageTwoRows = group([300, 301, 600, 601], 1000);
+  assert.equal(pageOneRows.length, 3, 'page one should keep three boundary lines');
+  assert.equal(pageTwoRows.length, 2, 'page two should keep two boundary lines');
+  const pageOneCrops = build(1000, 1000, pageOneRows, { y: 0, h: 920 });
+  const pageTwoCrops = build(1000, 1000, pageTwoRows, { y: 0, h: 620 });
+  assert.equal(pageOneCrops.length, 3, 'page one should produce three crops');
+  assert.equal(pageTwoCrops.length, 2, 'page two should produce two crops');
+  assert.ok(pageOneCrops[1].y > pageOneCrops[0].y, 'page one crops should be ordered vertically');
+  assert.ok(pageTwoCrops[1].y > pageTwoCrops[0].y, 'page two crops should be ordered vertically');
+  const framed = buildFrames(1000,1000,[70,670,752,1350,1434,2032].map(y => y * 1000 / 2104), { y: 0, h: 1000 });
+  assert.equal(framed.length, 3, 'paired frame lines should produce three receipt crops');
+});
+
+test('receipt mode defaults to two receipts per page and exposes progress/timeout handling', () => {
+  const html = source();
+  assert.doesNotMatch(html, /<option value="auto"[^>]*>自动识别每页数量（推荐）<\/option>/, 'automatic per-page count should be removed from the receipt count menu');
+  assert.match(html, /<option value="2" selected>2<\/option>/, 'receipt mode should default to two receipts per page');
+  assert.match(html, /function pdfSplitSetReceiptProgress\s*\(/, 'receipt mode should expose progress updates');
+  assert.match(html, /PDF_SPLIT_OCR_TIMEOUT_MS\s*=\s*15000/, 'OCR should have a bounded wait');
+  const execute = html.slice(html.indexOf('async function pdfSplitExecute'), html.indexOf('\nlet pdfSplitResults=[]'));
+  assert.match(execute, /pdfSplitSetReceiptProgress\(/, 'execute should report receipt progress');
+  assert.match(execute, /pdfSplitDetectReceiptGapsFromImage\(canvas,canvas\.width,canvas\.height,manualCount\)/, 'execute should prefer image detection before single-receipt fallback');
+});
+
+test('receipt UI recommends template splitting and reuses one OCR pass per image page', () => {
+  const html = source();
+  assert.match(html, /class="pdf-split-mode-picker"/, 'split modes should use the compact picker layout');
+  assert.match(html, /按页拆分/, 'page splitting should have a concise label');
+  assert.match(html, /自动识别回单/, 'automatic receipt splitting should have a concise label');
+  assert.match(html, /模板框选/, 'manual template splitting should have a concise label');
+  assert.match(html, /class="pdf-split-mode-hint"/, 'the recommendation should be separated from the mode buttons');
+  assert.match(html, /自动识别适合版式不固定[^<]*速度较慢/, 'automatic mode should explain its speed tradeoff');
+  assert.match(html, /id="pdfSplitTemplateOcr" checked/, 'template mode should enable OCR naming by default');
+  assert.match(html, /关闭识别.*加速/, 'template mode should explain how to opt out of OCR');
+  assert.match(html, /模板模式默认.*识别内容并命名/, 'template mode should explain its recognition default');
+  const execute = html.slice(html.indexOf('async function pdfSplitExecute'), html.indexOf('\nlet pdfSplitResults=[]'));
+  assert.match(execute, /pagePaddleOcr/, 'execute should keep a page-level OCR result');
+  assert.match(execute, /pdfSplitPaddleResultForCrop\(pagePaddleOcr/, 'each crop should reuse the page-level OCR result');
+  assert.match(execute, /pdfSplitOcrReceiptCanvas\(cc,cropLines,layoutFields,cropPaddleOcr\)/, 'receipt OCR should accept the shared crop result');
+  assert.match(execute, /templateOcrEnabled/, 'template mode should keep an explicit OCR switch');
+  assert.match(execute, /templateOcrEnabled\s*\?\s*await pdfSplitOcrReceiptCanvas/, 'template mode should recognize when OCR is enabled');
+  const reset = html.slice(html.indexOf('function pdfSplitReset'), html.indexOf('\nfunction pdfSplitClearUpload', html.indexOf('function pdfSplitReset')));
+  assert.match(reset, /getElementById\('pdfSplitTemplateOcr'\)\.checked=true/, 'reset should restore the recognition default');
+});
+
+test('template selection clearly labels receipt order with hatched numbered overlays', () => {
+  const html = source();
+  assert.match(html, /id="templateSelectLegend"/, 'template selection should show an order legend');
+  assert.match(html, /class="template-select-legend-item"/, 'legend entries should be visually grouped');
+  assert.match(html, /function __tplDrawHatchedOverlay\s*\(/, 'selected regions should have a hatched overlay');
+  assert.match(html, /function __tplDrawCircleBadge\s*\(/, 'selected regions should have circular number badges');
+  assert.match(html, /__tplDrawHatchedOverlay\(r,color,i\+1\)/, 'confirmed regions should use numbered hatched overlays');
+  assert.match(html, /__tplDrawCircleBadge\(r,color,i\+1\)/, 'confirmed regions should show their order number');
+  assert.match(html, /__tplDrawCircleBadge\(__tplDragRect,color,__tplRects\.length\+1\)/, 'the region being drawn should preview its next order number');
+});
+
 test('Chinese uppercase amount restores a decimal point missed by OCR', () => {
   const { pdfSplitReconcileAmountWithChinese: reconcile } = loadAmountParser(source());
   const result = reconcile(
@@ -433,7 +519,7 @@ test('canonical entry sends the original receipt crop to OCR so small party labe
   for (const file of canonicalFiles) {
     const html = source(file);
     const receiptLoop = html.slice(html.indexOf('for(let n=0;n<receiptCrops.length;n++)'), html.indexOf('const baseName=pdfSplitBuildReceiptBaseName'));
-    assert.match(receiptLoop, /pdfSplitOcrReceiptCanvas\(cc,cropLines,layoutFields\)/, `${file} OCR uses the original crop`);
+    assert.match(receiptLoop, /pdfSplitOcrReceiptCanvas\(cc,cropLines,layoutFields,cropPaddleOcr\)/, `${file} OCR uses the original crop`);
     assert.doesNotMatch(receiptLoop, /pdfSplitOcrReceiptCanvas\(processed,cropLines,layoutFields\)/, `${file} must not OCR the destructive preprocessing output`);
   }
 });
