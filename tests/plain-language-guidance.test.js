@@ -22,8 +22,8 @@ test('spreadsheet settings mark common defaults and use recognizable examples', 
 
 test('PDF and image settings explain the visible output', () => {
   assert.match(html, /一张导出页面里放几页内容？/);
-  assert.match(html, /一页就是一份，要按页拆开（常用）/);
-  assert.match(html, /一页里有多张回单，让系统自动切开/);
+  assert.match(html, /按页拆分/);
+  assert.match(html, /自动识别回单/);
   assert.match(html, /要生成几个 PDF？/);
   assert.match(html, /清晰度和文件大小/);
 });
