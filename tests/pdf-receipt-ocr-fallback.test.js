@@ -139,6 +139,7 @@ function renderPdfSplitResults(html, mode) {
   };
   const elements = {
     pdfSplitExportName: { placeholder: '' },
+    pdfSplitExportFormatHint: { textContent: '' },
     pdfSplitPreviewThumbs: { innerHTML: '', style: {} },
     pdfSplitResultStats: { innerHTML: '' }
   };
@@ -155,10 +156,34 @@ function renderPdfSplitResults(html, mode) {
       return match ? formatInputs[match[1]] : null;
     }
   };
-  const context = { document, pdfSplitResults: [], URL, Blob };
+  const context = { document, pdfSplitResults: [], pdfSplitResultFilter: '', URL, Blob };
   vm.createContext(context);
   vm.runInContext(`${html.slice(start, end)}\npdfSplitRenderResults(${JSON.stringify(mode)});`, context);
   return { formatInputs, elements };
+}
+
+function loadPdfSplitNameHelpers(html) {
+  const start = html.indexOf('function pdfSplitReplaceNameTexts(');
+  const end = html.indexOf('\nfunction pdfSplitReplaceNames', start);
+  assert.ok(start >= 0 && end > start, 'PDF split filename replacement helper should exist');
+  const context = {};
+  vm.createContext(context);
+  vm.runInContext(html.slice(start, end) + '\nthis.api={pdfSplitReplaceNameTexts};', context);
+  return context.api;
+}
+
+function loadPdfSplitFilterHelpers(html) {
+  const start = html.indexOf('function pdfSplitResultSearchText(');
+  const end = html.indexOf('\nfunction pdfSplitApplyResultFilter', start);
+  assert.ok(start >= 0 && end > start, 'PDF split result filter helpers should exist');
+  const context = { pdfSplitResultFilter: '' };
+  vm.createContext(context);
+  vm.runInContext(
+    html.slice(start, end) +
+      '\nthis.api={searchText:pdfSplitResultSearchText,matches:pdfSplitResultMatchesFilter,setFilter(value){pdfSplitResultFilter=value;}};',
+    context
+  );
+  return context.api;
 }
 
 test('required OCR fields follow the selected receipt naming mode', () => {
@@ -413,7 +438,7 @@ test('receipt mode defaults to two receipts per page and exposes progress/timeou
   assert.match(html, /<option value="2" selected>2<\/option>/, 'receipt mode should default to two receipts per page');
   assert.match(html, /function pdfSplitSetReceiptProgress\s*\(/, 'receipt mode should expose progress updates');
   assert.match(html, /PDF_SPLIT_OCR_TIMEOUT_MS\s*=\s*15000/, 'OCR should have a bounded wait');
-  const execute = html.slice(html.indexOf('async function pdfSplitExecute'), html.indexOf('\nlet pdfSplitResults=[]'));
+  const execute = html.slice(html.indexOf('async function pdfSplitExecute'), html.indexOf('\nfunction pdfSplitCurrentExportFormat'));
   assert.match(execute, /pdfSplitSetReceiptProgress\(/, 'execute should report receipt progress');
   assert.match(execute, /pdfSplitDetectReceiptGapsFromImage\(canvas,canvas\.width,canvas\.height,manualCount\)/, 'execute should prefer image detection before single-receipt fallback');
 });
@@ -425,11 +450,17 @@ test('receipt UI recommends template splitting and reuses one OCR pass per image
   assert.match(html, /自动识别回单/, 'automatic receipt splitting should have a concise label');
   assert.match(html, /模板框选/, 'manual template splitting should have a concise label');
   assert.match(html, /class="pdf-split-mode-hint"/, 'the recommendation should be separated from the mode buttons');
-  assert.match(html, /自动识别适合版式不固定[^<]*速度较慢/, 'automatic mode should explain its speed tradeoff');
+  assert.match(html, /id="pdfSplitReceiptSpeedHint"/, 'the speed hint should have its own target');
+  assert.doesNotMatch(html, /建议优先使用模板框选：/, 'the long recommendation paragraph should be removed');
+  assert.doesNotMatch(html, /自动识别适合版式不固定/, 'the long automatic-mode explanation should be removed');
+  assert.match(html, /如果拆分速度慢，请选择“模板框选”模式，提高准确率。/, 'the hint should recommend template mode when splitting is slow');
+  const updateMode = html.slice(html.indexOf('function pdfSplitUpdateMode'), html.indexOf('\nfunction pdfSplitUpdateReceiptUI'));
+  assert.match(updateMode, /pdfSplitReceiptSpeedHint/, 'mode changes should update the speed hint');
+  assert.match(updateMode, /style\.display=mode==='receipt'\?'':'none'/, 'the speed hint should only show for automatic receipt mode');
   assert.match(html, /id="pdfSplitTemplateOcr" checked/, 'template mode should enable OCR naming by default');
-  assert.match(html, /关闭识别.*加速/, 'template mode should explain how to opt out of OCR');
-  assert.match(html, /模板模式默认.*识别内容并命名/, 'template mode should explain its recognition default');
-  const execute = html.slice(html.indexOf('async function pdfSplitExecute'), html.indexOf('\nlet pdfSplitResults=[]'));
+  assert.match(html, /只想快速裁切时，关闭识别/, 'template mode should explain how to opt out of recognition');
+  assert.match(html, /默认会识别文字并命名/, 'template mode should explain its recognition default');
+  const execute = html.slice(html.indexOf('async function pdfSplitExecute'), html.indexOf('\nfunction pdfSplitCurrentExportFormat'));
   assert.match(execute, /pagePaddleOcr/, 'execute should keep a page-level OCR result');
   assert.match(execute, /pdfSplitPaddleResultForCrop\(pagePaddleOcr/, 'each crop should reuse the page-level OCR result');
   assert.match(execute, /pdfSplitOcrReceiptCanvas\(cc,cropLines,layoutFields,cropPaddleOcr\)/, 'receipt OCR should accept the shared crop result');
@@ -437,6 +468,13 @@ test('receipt UI recommends template splitting and reuses one OCR pass per image
   assert.match(execute, /templateOcrEnabled\s*\?\s*await pdfSplitOcrReceiptCanvas/, 'template mode should recognize when OCR is enabled');
   const reset = html.slice(html.indexOf('function pdfSplitReset'), html.indexOf('\nfunction pdfSplitClearUpload', html.indexOf('function pdfSplitReset')));
   assert.match(reset, /getElementById\('pdfSplitTemplateOcr'\)\.checked=true/, 'reset should restore the recognition default');
+});
+
+test('template mode highlights the receipt count setting', () => {
+  const html = source();
+  assert.match(html, /<label class="pdf-split-count-highlight"[^>]*>[\s\S]*?每页回单数：[\s\S]*?<select id="pdfSplitTemplateCount"/, 'template mode should highlight the receipt count control');
+  assert.match(html, /\.pdf-split-count-highlight\s*\{[\s\S]*?border:\s*2px solid var\(--primary\)/, 'the receipt count highlight should use the primary border');
+  assert.match(html, /\.pdf-split-count-highlight\s*\{[\s\S]*?background:\s*var\(--primary-bg\)/, 'the receipt count highlight should use the primary background');
 });
 
 test('template selection clearly labels receipt order with hatched numbered overlays', () => {
@@ -448,6 +486,48 @@ test('template selection clearly labels receipt order with hatched numbered over
   assert.match(html, /__tplDrawHatchedOverlay\(r,color,i\+1\)/, 'confirmed regions should use numbered hatched overlays');
   assert.match(html, /__tplDrawCircleBadge\(r,color,i\+1\)/, 'confirmed regions should show their order number');
   assert.match(html, /__tplDrawCircleBadge\(__tplDragRect,color,__tplRects\.length\+1\)/, 'the region being drawn should preview its next order number');
+});
+
+test('template mode is ordered in the middle and cannot start before confirmation', () => {
+  const html = source();
+  const pickerStart = html.indexOf('<div class="pdf-split-mode-options"');
+  const pickerEnd = html.indexOf('<div class="pdf-split-mode-hint"', pickerStart);
+  const picker = html.slice(pickerStart, pickerEnd);
+  assert.ok(picker.indexOf('value="each"') < picker.indexOf('value="template"'), 'page mode should come before template mode');
+  assert.ok(picker.indexOf('value="template"') < picker.indexOf('value="receipt"'), 'template mode should sit before automatic mode');
+
+  const helperStart = html.indexOf('function pdfSplitCanStart(');
+  const helperEnd = html.indexOf('\nfunction pdfSplitSetReceiptProgress', helperStart);
+  assert.ok(helperStart >= 0 && helperEnd > helperStart, 'start-state helper should exist');
+  const context = {};
+  vm.createContext(context);
+  vm.runInContext(`${html.slice(helperStart, helperEnd)}\nthis.api={pdfSplitCanStart};`, context);
+  assert.equal(context.api.pdfSplitCanStart('template', true, 2, false), false, 'template mode must wait for a confirmed template');
+  assert.equal(context.api.pdfSplitCanStart('template', true, 2, true), true, 'template mode can start after confirmation');
+  assert.equal(context.api.pdfSplitCanStart('each', true, 2, false), true, 'page mode should not require a template');
+  assert.equal(context.api.pdfSplitCanStart('each', false, 2, false), false, 'a PDF is required before starting');
+});
+
+test('mode changes and reset invalidate stale split output and async progress', () => {
+  const html = source();
+  assert.match(html, /function pdfSplitClearStaleOutput\s*\(/, 'stale output should have a single cleanup helper');
+  const updateMode = html.slice(html.indexOf('function pdfSplitUpdateMode'), html.indexOf('\nfunction pdfSplitUpdateReceiptUI'));
+  assert.match(updateMode, /pdfSplitClearStaleOutput\(\)/, 'switching modes should clear the prior result');
+  const reset = html.slice(html.indexOf('function pdfSplitReset'), html.indexOf('\nfunction pdfSplitClearUpload', html.indexOf('function pdfSplitReset')));
+  assert.match(reset, /pdfSplitExecutionRunId\+\+/, 'reset should invalidate an in-flight split');
+  assert.match(reset, /pdfSplitClearProgress\(\)/, 'reset should clear the progress panel');
+  assert.match(reset, /pdfSplitTemplateReady=false/, 'reset should require a new template selection');
+});
+
+test('stopping a split cancels the active run and restores the controls', () => {
+  const html = source();
+  const cancel = html.slice(html.indexOf('function pdfSplitCancel'), html.indexOf('\nfunction pdfSplitThrowIfCancelled'));
+  assert.match(cancel, /pdfSplitCancelRequested=true/, 'stop should request cancellation');
+  assert.match(cancel, /cancelBtn\.disabled=true/, 'stop should prevent duplicate stop clicks');
+  const execute = html.slice(html.indexOf('async function pdfSplitExecute'), html.indexOf('\nfunction pdfSplitCurrentExportFormat'));
+  assert.match(execute, /const runId=\+\+pdfSplitExecutionRunId/, 'each split should have an invalidation token');
+  assert.match(execute, /runId!==pdfSplitExecutionRunId/, 'stale async work should not update the current UI');
+  assert.match(execute, /pdfSplitSetModeInputsDisabled\(false\)/, 'mode controls should be restored after stopping');
 });
 
 test('Chinese uppercase amount restores a decimal point missed by OCR', () => {
@@ -509,10 +589,60 @@ test('receipt result preview does not clip party fields below the thumbnail row'
   assert.match(renderer, /previewThumbs\.style\.overflowY=isReceiptLike\?'visible':'auto'/, 'receipt metadata remains visible instead of scrolling under the export controls');
 });
 
-test('receipt results default to JPG image export', () => {
-  const { formatInputs, elements } = renderPdfSplitResults(source(), 'receipt');
-  assert.equal(formatInputs.jpg.checked, true);
-  assert.equal(elements.pdfSplitExportName.placeholder, 'JPG 文件名');
+test('receipt-like results default to JPG image export', () => {
+  for (const mode of ['receipt', 'template']) {
+    const { formatInputs, elements } = renderPdfSplitResults(source(), mode);
+    assert.equal(formatInputs.jpg.checked, true, `${mode} mode should select JPG by default`);
+    assert.equal(elements.pdfSplitExportName.placeholder, 'JPG 文件名', `${mode} mode should use the JPG filename placeholder`);
+    assert.equal(elements.pdfSplitExportFormatHint.textContent, '回单模式默认 JPG 图片；需要保留 PDF 时再切换', `${mode} mode should explain the JPG default`);
+  }
+});
+
+test('receipt-like results provide wildcard filename replacement with undo', () => {
+  const html = source();
+  assert.match(html, /id="pdfSplitRenamePanel"[^>]*style="display:none;"/, 'the rename entry should start hidden until receipt results exist');
+  assert.match(html, /id="pdfSplitRenameEntry"[^>]*style="display:none;"/, 'the low-frequency rename entry should start collapsed');
+  assert.match(html, /onclick="pdfSplitToggleRenamePanel\(\)"/, 'receipt results should expose a compact rename toggle');
+  assert.match(html, /id="pdfSplitRenameToggleBtn"[^>]*>[\s\S]*展开/, 'the collapsed state should provide an explicit expand button');
+  assert.match(html, /onclick="pdfSplitToggleRenamePanel\(\)"[^>]*>[\s\S]*收起/, 'the expanded panel should provide an explicit collapse button');
+  assert.match(html, /let pdfSplitRenamePanelOpen=false/, 'the rename panel should track its collapsed state');
+  assert.match(html, /id="pdfSplitRenameFind"[^>]*placeholder="查找名称；\* 表示任意文字"/, 'the rename input should explain wildcard matching');
+  assert.match(html, /onclick="pdfSplitReplaceNames\(\)"/, 'receipt results should expose bulk replacement');
+  assert.match(html, /onclick="pdfSplitUndoNameChange\(\)"/, 'receipt results should expose undo');
+  assert.match(html, /let pdfSplitRenameHistory=\[\]/, 'bulk name changes should keep a history');
+  const { pdfSplitReplaceNameTexts: replace } = loadPdfSplitNameHelpers(html);
+  assert.deepEqual(
+    Array.from(replace(['四川杏林公司', '成都药房公司', '240.55元'], '*公司', '目标公司')),
+    ['目标公司', '目标公司', '240.55元'],
+    'a leading wildcard should replace the full name through the matching suffix'
+  );
+  assert.deepEqual(
+    Array.from(replace(['公司A', 'B公司', '公司C公司'], '公司', '门店')),
+    ['门店A', 'B门店', '门店C门店'],
+    'literal replacement should replace every occurrence in a filename'
+  );
+});
+
+test('receipt-like results can find matching fields and show only matches', () => {
+  const html = source();
+  assert.match(html, /id="pdfSplitFilterPanel"[^>]*style="display:none;"/, 'the result filter should start hidden until receipt results exist');
+  assert.match(html, /id="pdfSplitFilterFind"[^>]*placeholder="输入名称、付款方、收款方或金额"/, 'the filter should explain searchable receipt fields');
+  assert.match(html, /onclick="pdfSplitApplyResultFilter\(\)"/, 'receipt results should expose filtering');
+  assert.match(html, /onclick="pdfSplitClearResultFilter\(\)"/, 'receipt results should expose restoring all results');
+  const { searchText, matches, setFilter } = loadPdfSplitFilterHelpers(html);
+  const result = {
+    baseName: '四川杏林公司',
+    name: '四川杏林公司.pdf',
+    fields: { payer: '成都一心康大药房', payee: '四川杏林公司', amount: '240.55元', accounts: ['510501'] }
+  };
+  const searchable = searchText(result);
+  assert.ok(
+    ['四川杏林公司', '成都一心康大药房', '240.55元'].every(value => searchable.includes(value)),
+    'the filter should search names and receipt fields'
+  );
+  setFilter('成都一心康');
+  assert.equal(matches(result), true, 'matching receipt fields should remain visible');
+  assert.equal(matches({ baseName: '另一家药房', fields: { amount: '62.00元' } }), false, 'non-matching receipts should be hidden');
 });
 
 test('canonical entry sends the original receipt crop to OCR so small party labels survive', () => {
