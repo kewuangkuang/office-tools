@@ -127,7 +127,7 @@ test('batch recognize rename accepts pasted files only while its page is active'
   assert.match(source, /clipboardData/);
   assert.match(source, /getAsFile\(\)/);
   assert.match(source, /batchRecognizeHandleFiles\(files\)/);
-  assert.match(html, /拖拽、粘贴或点击选择文件/);
+  assert.match(html, /拖拽文件到这里，或点击选择，也支持 Ctrl\+V 粘贴/);
 });
 
 test('up to five normalized template boxes can be managed and reused for every file', () => {
