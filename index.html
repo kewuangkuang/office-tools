@@ -1552,6 +1552,12 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   }
   .recognize-preview-thumb:hover { border-color:var(--primary); box-shadow:0 0 0 3px rgba(var(--primary-rgb),.12); }
   .recognize-preview-thumb img { width:100%; height:100%; display:block; object-fit:contain; }
+  .recognize-preview-thumb .recognize-preview-lazy {
+    width:100%; height:100%; display:flex; flex-direction:column; gap:2px;
+    align-items:center; justify-content:center;
+    font-size:10px; line-height:1.2; color:var(--gray-500);
+  }
+  .recognize-preview-thumb .recognize-preview-lazy span:first-child { font-size:17px; }
   .recognize-preview-modal {
     position:fixed; inset:0; z-index:1100; display:none; align-items:center; justify-content:center;
     padding:24px; background:rgba(15,23,42,.78); backdrop-filter:blur(2px);
@@ -5733,6 +5739,7 @@ let pdfSplitTemplateReady = false;
 let pdfSplitLastMode = null;
 const PDF_SPLIT_OCR_TIMEOUT_MS = 15000;
 const INVOICE_RECOGNIZE_FILE_TIMEOUT_MS = 45000;
+const INVOICE_RECOGNIZE_PREVIEW_TIMEOUT_MS = 15000;
 
 function pdfSplitCanStart(mode, hasFile, selectedCount, templateReady){
   const loaded=hasFile===undefined?!!pdfSplitDoc:!!hasFile;
@@ -10159,6 +10166,55 @@ function batchRecognizeFitSourceSize(width,height){
   var scale=Math.min(1,maxSide/Math.max(width,height),Math.sqrt(maxPixels/(width*height)));
   return [Math.max(1,Math.round(width*scale)),Math.max(1,Math.round(height*scale))];
 }
+// 只读 PDF 第一页的文字层，不做栅格化渲染。返回的对象刻意和
+// batchRecognizeRenderSource() 的画布带同样的 __batchRecognize* 元数据，
+// 这样发票识别可以先用它试文字层，不足时再补渲染。
+async function invoiceRecognizeReadPdfTextSource(file){
+  var pdfBytes=new Uint8Array(await file.arrayBuffer());
+  var doc=await pdfjsLib.getDocument({data:pdfBytes.slice()}).promise;
+  try{
+    var page=await doc.getPage(1);
+    var base=page.getViewport({scale:1});
+    var desiredScale=Math.min(6,Math.max(3,3600/base.width));
+    var fitted=batchRecognizeFitSourceSize(base.width*desiredScale,base.height*desiredScale);
+    var scale=fitted[0]/base.width;
+    var viewport=page.getViewport({scale:scale});
+    var textContent=await page.getTextContent().catch(function(){return {items:[]};});
+    return {
+      width:Math.ceil(viewport.width),
+      height:Math.ceil(viewport.height),
+      __batchRecognizePdfTextItems:pdfSplitAllTextItems(textContent,viewport),
+      __batchRecognizeSourceType:'pdf',
+      __batchRecognizePdfBytes:pdfBytes,
+      __batchRecognizePdfPageSize:{width:base.width,height:base.height},
+      __batchRecognizePdfScale:scale
+    };
+  }finally{
+    if(doc.destroy)await doc.destroy();
+  }
+}
+// 结果表格里的缩略图不需要 OCR 分辨率，按预览尺寸单独渲染一次比复用大图便宜得多。
+async function invoiceRecognizePdfPreviewUrl(file){
+  var pdfBytes=new Uint8Array(await file.arrayBuffer());
+  var doc=await pdfjsLib.getDocument({data:pdfBytes.slice()}).promise;
+  try{
+    var page=await doc.getPage(1);
+    var base=page.getViewport({scale:1});
+    var viewport=page.getViewport({scale:Math.min(2,1000/base.width)});
+    var canvas=document.createElement('canvas');
+    canvas.width=Math.ceil(viewport.width);
+    canvas.height=Math.ceil(viewport.height);
+    var ctx=canvas.getContext('2d',{alpha:false});
+    ctx.fillStyle='#fff';
+    ctx.fillRect(0,0,canvas.width,canvas.height);
+    await pdfSplitWithTimeout(function(){
+      return page.render({canvasContext:ctx,viewport:viewport}).promise;
+    },INVOICE_RECOGNIZE_PREVIEW_TIMEOUT_MS,'预览渲染超时，该文件可能过于复杂或已损坏');
+    return canvas.toDataURL('image/jpeg',0.9);
+  }finally{
+    if(doc.destroy)await doc.destroy();
+  }
+}
 async function batchRecognizeRenderSource(file){
   if(file.type==='application/pdf'||/\.pdf$/i.test(file.name)){
     var pdfBytes=new Uint8Array(await file.arrayBuffer());
@@ -10265,7 +10321,10 @@ function invoiceRecognizeMergeOcrResult(fields,result){
   Object.keys(next).forEach(function(key){if(next[key]&&!fields[key])fields[key]=next[key];});
   return fields;
 }
-async function invoiceRecognizeRecognizeFile(sourceCanvas){
+// sourceCanvas 只需带上 PDF 文字层元数据；ensureCanvas 是可选的“按需渲染”回调，
+// 只有在文字层不足、真的要走 OCR 时才调用。电子发票的文字层通常够用，
+// 这样就不必为每张发票先渲染一张 OCR 分辨率的大图（那是每张几秒的开销）。
+async function invoiceRecognizeRecognizeFile(sourceCanvas,ensureCanvas){
   var textItems=sourceCanvas?.__batchRecognizePdfTextItems||[];
   var usedRawPdfText=false;
   if(sourceCanvas?.__batchRecognizePdfBytes){
@@ -10290,8 +10349,21 @@ async function invoiceRecognizeRecognizeFile(sourceCanvas){
   }
   var fields=textFields;
   var errors=[];
+  var ocrCanvas=sourceCanvas;
+  if(ensureCanvas){
+    try{
+      ocrCanvas=await ensureCanvas();
+    }catch(error){
+      return {
+        fields:fields,
+        source:'识别失败',
+        status:'需核对',
+        error:'发票转图片失败：'+(error.message||error)
+      };
+    }
+  }
   try{
-    var paddle=await pdfSplitWithTimeout(function(){return pdfSplitRunPaddleOcr(sourceCanvas);},PDF_SPLIT_OCR_TIMEOUT_MS,'PaddleOCR 超时');
+    var paddle=await pdfSplitWithTimeout(function(){return pdfSplitRunPaddleOcr(ocrCanvas);},PDF_SPLIT_OCR_TIMEOUT_MS,'PaddleOCR 超时');
     invoiceRecognizeMergeOcrResult(fields,paddle);
     if(invoiceRecognizeHasUsefulFields(fields)){
       return {
@@ -10306,7 +10378,7 @@ async function invoiceRecognizeRecognizeFile(sourceCanvas){
     errors.push('PaddleOCR：'+(error.message||error));
   }
   try{
-    var tess=await pdfSplitWithTimeout(function(){return pdfSplitRunTesseractOcr(sourceCanvas,{tessedit_pageseg_mode:'6',preserve_interword_spaces:'1'});},PDF_SPLIT_OCR_TIMEOUT_MS,'Tesseract 超时');
+    var tess=await pdfSplitWithTimeout(function(){return pdfSplitRunTesseractOcr(ocrCanvas,{tessedit_pageseg_mode:'6',preserve_interword_spaces:'1'});},PDF_SPLIT_OCR_TIMEOUT_MS,'Tesseract 超时');
     invoiceRecognizeMergeOcrResult(fields,tess);
     if(invoiceRecognizeHasUsefulFields(fields)){
       return {
@@ -10624,6 +10696,28 @@ async function batchRecognizeOcr(crop,enhanced){
     error:errors.join('；')
   };
 }
+// PDF 走“先文字层、不足才渲染”的路线；图片没有文字层，只能直接渲染后 OCR。
+async function invoiceRecognizeProcessFile(file,isPdf){
+  if(!isPdf){
+    var imageCanvas=await batchRecognizeRenderSource(file);
+    return {
+      recognized:await invoiceRecognizeRecognizeFile(imageCanvas),
+      previewUrl:batchRecognizeMakePreviewUrl(imageCanvas)
+    };
+  }
+  var textSource=await invoiceRecognizeReadPdfTextSource(file);
+  var renderedCanvas=null;
+  var recognized=await invoiceRecognizeRecognizeFile(textSource,async function(){
+    renderedCanvas=await batchRecognizeRenderSource(file);
+    return renderedCanvas;
+  });
+  // 走 OCR 时画布已经渲染好了，顺手复用；纯文字层的发票一张图都不渲染，
+  // 缩略图留到用户点击预览时再按需生成。
+  return {
+    recognized:recognized,
+    previewUrl:renderedCanvas?batchRecognizeMakePreviewUrl(renderedCanvas):''
+  };
+}
 async function invoiceRecognizeStart(){
   if(!batchRecognizeFiles.length){showToast('请先选择发票 PDF 或图片','error');return;}
   var runId=++batchRecognizeRunId;
@@ -10643,12 +10737,14 @@ async function invoiceRecognizeStart(){
       var file=batchRecognizeFiles[i];
       progressText.textContent='正在识别发票 '+(i+1)+' / '+batchRecognizeFiles.length+'：'+file.name;
       progressBar.style.width=Math.round(i/batchRecognizeFiles.length*100)+'%';
-      var sourceCanvas=null,recognized;
+      var isPdf=file.type==='application/pdf'||/\.pdf$/i.test(file.name);
+      var recognized,previewUrl='';
       try{
-        sourceCanvas=await pdfSplitWithTimeout(async function(){
-          var canvas=await batchRecognizeRenderSource(file);
-          return {canvas:canvas,recognized:await invoiceRecognizeRecognizeFile(canvas)};
-        },INVOICE_RECOGNIZE_FILE_TIMEOUT_MS,'单张发票处理超时（45 秒），可能文件过大或已损坏').then(function(r){recognized=r.recognized;return r.canvas;});
+        var outcome=await pdfSplitWithTimeout(function(){
+          return invoiceRecognizeProcessFile(file,isPdf);
+        },INVOICE_RECOGNIZE_FILE_TIMEOUT_MS,'单张发票处理超时（45 秒），可能文件过大或已损坏');
+        recognized=outcome.recognized;
+        previewUrl=outcome.previewUrl;
       }catch(error){
         recognized={
           fields:invoiceRecognizeEmptyFields(),
@@ -10663,7 +10759,7 @@ async function invoiceRecognizeStart(){
         source:recognized.source,
         status:recognized.status,
         error:recognized.error||'',
-        previewUrl:sourceCanvas?batchRecognizeMakePreviewUrl(sourceCanvas):''
+        previewUrl:previewUrl
       });
       await new Promise(function(resolve){setTimeout(resolve,0);});
     }
@@ -10931,8 +11027,11 @@ function invoiceRecognizeRenderResults(){
     var status=data.rows[i][data.headers.length-2];
     var source=data.rows[i][data.headers.length-1];
     var errorTitle=result.error?' title="'+renameAttrEsc(result.error)+'"':'';
+    var thumbInner=result.previewUrl
+      ? '<img src="'+renameAttrEsc(result.previewUrl)+'" alt="">'
+      : '<span class="recognize-preview-lazy"><span>📄</span><span>点击预览</span></span>';
     return '<tr><td>'+(i+1)+'</td><td><div class="recognize-original-cell">'+
-      '<button type="button" class="recognize-preview-thumb" onclick="batchRecognizeOpenPreview('+i+')" aria-label="预览 '+renameAttrEsc(result.file.name)+'"><img src="'+renameAttrEsc(result.previewUrl||'')+'" alt=""></button>'+
+      '<button type="button" class="recognize-preview-thumb" onclick="batchRecognizeOpenPreview('+i+')" aria-label="预览 '+renameAttrEsc(result.file.name)+'" title="点击查看发票原件">'+thumbInner+'</button>'+
       '<span class="recognize-original-name">'+renameEsc(result.file.name)+'</span></div></td>'+cells+
       '<td'+errorTitle+'>'+renameEsc(status)+'</td><td>'+renameEsc(source)+'</td></tr>';
   }).join('');
@@ -11004,11 +11103,29 @@ function batchRecognizeRenderResults(){
       '<td><input class="rename-name-input" value="'+renameAttrEsc(result.name)+'" onchange="batchRecognizeSetName('+i+',this.value)"></td></tr>';
   }).join('');
 }
-function batchRecognizeOpenPreview(index){
+async function batchRecognizeOpenPreview(index){
   var result=batchRecognizeResults[index];
-  if(!result||!result.previewUrl)return;
-  document.getElementById('batchRecognizePreviewTitle').textContent='预览：'+result.file.name;
+  if(!result)return;
+  var title=document.getElementById('batchRecognizePreviewTitle');
   var previewImage=document.getElementById('batchRecognizePreviewImage');
+  // 纯文字层识别的发票没有预渲染的图，这里按需渲染一次并缓存，
+  // 避免批量识别时为每张发票都付一次渲染开销。
+  if(!result.previewUrl){
+    var isPdf=result.file.type==='application/pdf'||/\.pdf$/i.test(result.file.name);
+    if(!isPdf)return;
+    title.textContent='正在生成预览：'+result.file.name;
+    previewImage.hidden=true;
+    document.getElementById('batchRecognizePreviewModal').style.display='flex';
+    try{
+      result.previewUrl=await invoiceRecognizePdfPreviewUrl(result.file);
+      batchRecognizeRenderResults();
+    }catch(error){
+      title.textContent='预览生成失败：'+result.file.name;
+      showToast('预览生成失败：'+(error.message||error),'error');
+      return;
+    }
+  }
+  title.textContent='预览：'+result.file.name;
   previewImage.hidden=false;
   previewImage.src=result.previewUrl;
   document.getElementById('batchRecognizePreviewModal').style.display='flex';
