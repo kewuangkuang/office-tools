@@ -10678,15 +10678,20 @@ function batchRecognizeTextLayerText(sourceCanvas,template){
   return batchRecognizeCleanText(pdfSplitGroupTextItems(selected).join(' '));
 }
 async function batchRecognizeOcr(crop,enhanced){
-  var paddle=await pdfSplitRunPaddleOcr(crop);
+  // 每次 OCR 都要有超时：一张卡住的图片不能让整批识别无限期停住。
+  var ocr=function(task,label){
+    return pdfSplitWithTimeout(task,PDF_SPLIT_OCR_TIMEOUT_MS,label)
+      .catch(function(error){return {lines:[],words:[],blocks:[],raw:null,error:error.message||String(error)};});
+  };
+  var paddle=await ocr(function(){return pdfSplitRunPaddleOcr(crop);},'PaddleOCR 超时');
   var paddleText=batchRecognizeCleanText((paddle.lines||[]).join(' '));
   if(paddleText)return {text:paddleText,source:'PaddleOCR'};
   var errors=[];
   if(paddle.error)errors.push('PaddleOCR：'+paddle.error);
-  var tess=await pdfSplitRunTesseractOcr(enhanced||crop,{tessedit_pageseg_mode:'6',preserve_interword_spaces:'1'});
+  var tess=await ocr(function(){return pdfSplitRunTesseractOcr(enhanced||crop,{tessedit_pageseg_mode:'6',preserve_interword_spaces:'1'});},'Tesseract 超时');
   var tessText=batchRecognizeCleanText((tess.lines||[]).join(' '));
   if(!tessText&&enhanced&&enhanced!==crop){
-    tess=await pdfSplitRunTesseractOcr(crop,{tessedit_pageseg_mode:'6',preserve_interword_spaces:'1'});
+    tess=await ocr(function(){return pdfSplitRunTesseractOcr(crop,{tessedit_pageseg_mode:'6',preserve_interword_spaces:'1'});},'Tesseract 超时');
     tessText=batchRecognizeCleanText((tess.lines||[]).join(' '));
   }
   if(tess.error)errors.push('Tesseract：'+tess.error);

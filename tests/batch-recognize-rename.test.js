@@ -77,21 +77,52 @@ test('online OCR retries alternate CDNs for PaddleOCR and Tesseract', () => {
   assert.match(html, /https:\/\/unpkg\.com\/tesseract\.js\@5\.1\.1\/dist\/tesseract\.min\.js/);
 });
 
-test('OCR reports a resource-loading failure instead of silently saying unrecognized', async () => {
+function loadBatchRecognizeOcr(overrides = {}) {
   const start = html.indexOf('async function batchRecognizeOcr(crop,enhanced)');
   const end = html.indexOf('\nasync function batchRecognizeStart()', start);
+  assert.ok(start >= 0 && end > start, 'batchRecognizeOcr should exist');
   const context = {
     batchRecognizeCleanText: text => String(text || '').replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim(),
     pdfSplitRunPaddleOcr: async () => ({lines: [], error: 'Paddle unavailable'}),
-    pdfSplitRunTesseractOcr: async () => ({lines: [], error: 'Tesseract unavailable'})
+    pdfSplitRunTesseractOcr: async () => ({lines: [], error: 'Tesseract unavailable'}),
+    PDF_SPLIT_OCR_TIMEOUT_MS: 15000,
+    pdfSplitWithTimeout: (task, timeoutMs, label) => {
+      let timer = null;
+      const work = Promise.resolve().then(() => (typeof task === 'function' ? task() : task));
+      const timeout = new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error(label)), timeoutMs);
+      });
+      return Promise.race([work, timeout]).finally(() => { if (timer) clearTimeout(timer); });
+    },
+    setTimeout,
+    clearTimeout,
+    ...overrides
   };
   vm.createContext(context);
   vm.runInContext(`${html.slice(start, end)}\nthis.run=batchRecognizeOcr;`, context);
+  return context.run;
+}
 
-  const result = await context.run({}, {});
+test('OCR reports a resource-loading failure instead of silently saying unrecognized', async () => {
+  const run = loadBatchRecognizeOcr();
+  const result = await run({}, {});
   assert.equal(result.source, 'OCR资源加载失败');
   assert.match(result.error, /Paddle unavailable/);
   assert.match(result.error, /Tesseract unavailable/);
+});
+
+test('a hanging OCR engine cannot stall the batch indefinitely', async () => {
+  // Every OCR call must be bounded; one unresponsive image used to hang the
+  // whole batch because these calls had no timeout wrapper.
+  const run = loadBatchRecognizeOcr({
+    PDF_SPLIT_OCR_TIMEOUT_MS: 20,
+    pdfSplitRunPaddleOcr: () => new Promise(() => {}),
+    pdfSplitRunTesseractOcr: () => new Promise(() => {})
+  });
+  const result = await run({}, {});
+  assert.equal(result.text, '');
+  assert.equal(result.source, 'OCR资源加载失败');
+  assert.match(result.error, /超时/);
 });
 
 test('OCR keeps normal phone-photo resolution and enlarges narrow text crops', () => {
