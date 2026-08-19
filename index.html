@@ -3178,9 +3178,16 @@ const PADDLE_OCR_WASM_BASE_URLS=[
   'https://unpkg.com/onnxruntime-web@1.22.0/dist/'
 ];
 const TESSERACT_SCRIPT_URLS=[
+  './ocr-models/tesseract/tesseract.min.js',
   'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js',
   'https://unpkg.com/tesseract.js@5.1.1/dist/tesseract.min.js'
 ];
+const TESSERACT_LOCAL_WORKER_OPTIONS={
+  workerPath:'./ocr-models/tesseract/worker.min.js',
+  corePath:'./ocr-models/tesseract/tesseract-core-simd-lstm.wasm.js',
+  langPath:'./ocr-models/tesseract/',
+  gzip:false
+};
 let paddleOcrInitPromise=null;
 let paddleOcrUnavailable=false;
 async function ensurePaddleOcrLoaded(){
@@ -3326,7 +3333,8 @@ async function ensureTesseractLoaded(){
       try{
         if(!window.Tesseract)await pdfSplitLoadScript(scriptUrl);
         if(!window.Tesseract)throw new Error('Tesseract.js 模块未加载');
-        const worker=await Tesseract.createWorker('chi_sim+eng');
+        const workerOptions=scriptUrl.startsWith('./')?TESSERACT_LOCAL_WORKER_OPTIONS:undefined;
+        const worker=await Tesseract.createWorker('chi_sim+eng',1,workerOptions);
         window.__pdfSplitTesseractWorker=worker;
         return true;
       }catch(e){
