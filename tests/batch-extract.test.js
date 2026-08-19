@@ -6,8 +6,9 @@ const vm = require('node:vm');
 
 const html = fs.readFileSync(path.resolve(__dirname, '..', 'index.html'), 'utf8');
 
-test('homepage exposes batch box extraction and Excel export mode', () => {
-  assert.match(html, /onclick="showTool\('extract'\)"/);
+test('homepage exposes invoice recognition and Excel export mode', () => {
+  assert.match(html, /onclick="showTool\('invoice'\)"/);
+  assert.match(html, /function invoiceRecognizeStart\(/);
   assert.match(html, /function batchRecognizeSetMode\(/);
   assert.match(html, /id="batchRecognizeExportExcelBtn"/);
   assert.match(html, /onclick="batchRecognizeExportXLSX\(\)"/);
