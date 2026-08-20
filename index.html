@@ -2783,7 +2783,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     </div>
 
     <div class="card" id="batchRecognizeResultCard" style="display:none;">
-      <div class="card-title" id="batchRecognizeResultTitle"><span class="icon">✅</span> 核对名称并下载</div>
+      <div class="card-title" id="batchRecognizeResultTitle"><span class="icon">✅</span> 识别完成，可下载 Excel</div>
       <div id="batchRecognizeResultHelp" style="font-size:12px;color:var(--gray-500);margin-bottom:10px;">请先看“新文件名”是否正确；图片模糊时可能识别错，可以直接点击名称修改。</div>
       <div class="recognize-replace-panel" id="batchRecognizeReplacePanel">
         <strong style="font-size:13px;color:var(--gray-700);">一键替换改名</strong>
@@ -2793,7 +2793,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         <button class="btn btn-outline" onclick="batchRecognizeReplaceAll()">一键替换全部</button>
         <span id="batchRecognizeReplaceStatus" aria-live="polite" style="font-size:12px;color:var(--gray-500);"></span>
       </div>
-      <div class="preview-table-wrap" style="max-height:420px;overflow:auto;">
+      <div class="preview-table-wrap" id="batchRecognizeResultTableWrap" style="max-height:420px;overflow:auto;">
         <table class="preview-table">
           <thead id="batchRecognizeResultHead"><tr><th>#</th><th>原文件名</th><th>识别文字</th><th>新文件名</th></tr></thead>
           <tbody id="batchRecognizeResultBody"></tbody>
@@ -9616,10 +9616,10 @@ function batchRecognizeSetMode(mode){
   setText('batchRecognizeTemplateHelp',extract
     ? '① 点击“添加一列”　② 在示范文件上框住一个字段　③ 给这一列填写名称和格式。金额、税额等列选择“数字”，例如 ¥38.42 会导出为 38.42。每个文件最终对应 Excel 一行。'
     : '1. 点击“添加一段要识别的文字”；2. 在示范文件上框住姓名、日期等位置；3. 系统会在其他文件的相同位置读取文字。例：先框“公司名称”，再框“日期”，会生成“公司名称_日期.pdf”。');
-  setText('batchRecognizeResultTitle',invoice?'✅ 核对发票结果并导出':(extract?'✅ 核对结果并导出':'✅ 核对名称并下载'));
+  setText('batchRecognizeResultTitle',invoice?'✅ 发票识别完成，可下载 Excel':(extract?'✅ 核对结果并导出':'✅ 核对名称并下载'));
   setText('batchRecognizeProgressTitle',invoice?'⏳ 正在识别发票':(extract?'⏳ 正在提取文字':'⏳ 正在识别文件'));
   setText('batchRecognizeResultHelp',invoice
-    ? '每张发票对应一行；空白或标记“需核对”的单元格可以直接修改，确认无误后导出 Excel。'
+    ? '识别结果已整理成 Excel，每张发票对应一行；直接点击“下载 Excel”即可。'
     : (extract
       ? '每个框对应 Excel 的一列；识别结果可以直接修改，确认无误后导出。'
       : '请先看“新文件名”是否正确；图片模糊时可能识别错，可以直接点击名称修改。'));
@@ -9629,12 +9629,15 @@ function batchRecognizeSetMode(mode){
   setDisplay('batchRecognizeTemplateCard',invoice?'none':'');
   setDisplay('batchRecognizeSeparatorControls',extract?'none':'flex');
   setDisplay('batchRecognizeReplacePanel',extract||invoice?'none':'');
+  setDisplay('batchRecognizeResultTableWrap',invoice?'none':'');
   setDisplay('batchRecognizeExportExcelBtn',extract||invoice?'':'none');
   setDisplay('batchRecognizeExcelExportOptions',extract||invoice?'flex':'none');
   var download=document.querySelector('#batchRecognizeResultCard button[onclick="batchRecognizeDownload()"]');
   if(download)download.style.display=extract||invoice?'none':'';
   var excelName=document.getElementById('batchRecognizeExcelName');
   if(excelName&&!batchRecognizeResults.length)excelName.value=invoice?'发票识别结果':(extract?'批量框选提取结果':'批量识别结果');
+  var exportButton=document.getElementById('batchRecognizeExportExcelBtn');
+  if(exportButton)exportButton.textContent=invoice?'📥 下载 Excel':'📥 导出 Excel';
   if(batchRecognizeTemplates.length)batchRecognizeRenderFieldList();
   if(batchRecognizeResults.length)batchRecognizeRenderResults();
 }
@@ -10769,11 +10772,11 @@ async function invoiceRecognizeStart(){
       await new Promise(function(resolve){setTimeout(resolve,0);});
     }
     progressBar.style.width='100%';
-    progressText.textContent='识别完成，共 '+batchRecognizeResults.length+' 张发票；请核对标记为“需核对”的内容';
+    progressText.textContent='识别完成，共 '+batchRecognizeResults.length+' 张发票；Excel 已准备好，可直接下载';
     batchRecognizeRenderResults();
     document.getElementById('batchRecognizeResultCard').style.display='';
     document.getElementById('batchRecognizeResultCard').scrollIntoView({behavior:'smooth',block:'start'});
-    showToast('发票识别完成，请核对结果后导出','success');
+    showToast('发票识别完成，可下载 Excel','success');
   }catch(error){
     progressText.textContent='识别失败：'+(error.message||error);
     showToast(error.message||'发票识别失败','error');

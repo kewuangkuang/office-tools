@@ -16,6 +16,9 @@ test('homepage exposes a direct invoice recognition entry', () => {
   assert.match(html, /id="invoiceRecognizeOptionsCard"/);
   assert.match(html, /onclick="invoiceRecognizeStart\(\)"/);
   assert.match(html, /id="batchRecognizeInput"[^>]*multiple/);
+  assert.match(html, /id="batchRecognizeResultTableWrap"/);
+  assert.match(html, /invoice\?'📥 下载 Excel'/);
+  assert.match(html, /setDisplay\('batchRecognizeResultTableWrap',invoice\?'none':''\)/);
   assert.match(html, /连续粘贴/);
 });
 
