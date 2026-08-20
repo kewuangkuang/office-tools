@@ -4,5 +4,4 @@ node_modules/
 .worktrees/
 *.log
 .DS_Store
-*.traineddata
 test-receipt.pdf
