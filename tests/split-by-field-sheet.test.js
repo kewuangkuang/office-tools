@@ -65,8 +65,50 @@ test('field splitting allows a selected column that is entirely blank beyond the
 });
 
 test('split table UI exposes the multiple-sheet mode and its export path', () => {
-  assert.match(html, /data-mode="sheets"/);
+  assert.match(html, /id="splitRuleOptions"/);
+  assert.match(html, /id="splitFieldOutputRow"/);
+  assert.match(html, /id="splitFieldOutputOptions"/);
+  assert.match(html, /id="splitFieldOutputOptions"[\s\S]*data-mode="sheets"/);
   assert.match(html, /onclick="splitSetMode\('sheets'\)"/);
   assert.match(html, /splitMergedData\.mode === 'sheets'/);
   assert.match(html, /addWorksheet\(sheet\.name\)/);
+});
+
+test('split mode selection keeps field output as a nested choice', () => {
+  const start = html.indexOf('function splitSetMode(');
+  const end = html.indexOf('\nfunction splitSetOrder(', start);
+  assert.ok(start >= 0 && end > start, 'split mode controller should exist');
+
+  const controls = {};
+  const makeControl = () => ({ style: { display: '', setProperty(name, value) { this[name] = value; } } });
+  ['splitResultCard', 'splitColLabel', 'splitCol', 'splitFieldOutputRow', 'splitPageSetupCard', 'splitTablesPerPageRow', 'splitOrderRow']
+    .forEach(id => { controls[id] = makeControl(); });
+  controls.splitCol.value = 1;
+
+  const makeButton = mode => ({
+    dataset: { mode },
+    classList: { active: false, toggle(name, value) { if (name === 'active') this.active = value; } }
+  });
+  const ruleButtons = [makeButton('column'), makeButton('rows')];
+  const outputButtons = [makeButton('column'), makeButton('sheets')];
+  const document = {
+    getElementById: id => controls[id],
+    querySelectorAll: selector => selector === '#splitRuleOptions .nup-option' ? ruleButtons : outputButtons
+  };
+  const context = { document, splitWB: {}, splitMergedData: null, ruleButtons, outputButtons };
+  vm.createContext(context);
+  vm.runInContext(`let splitMode = 'column';\n${html.slice(start, end)}\nthis.api={set:splitSetMode,state:()=>({mode:splitMode,ruleButtons,outputButtons,outputDisplay:document.getElementById('splitFieldOutputRow').style.display,pageSetup:document.getElementById('splitPageSetupCard').style.display})};`, context);
+
+  context.api.set('sheets');
+  let state = context.api.state();
+  assert.equal(state.mode, 'sheets');
+  assert.deepEqual(JSON.parse(JSON.stringify(state.ruleButtons.map(button => button.classList.active))), [true, false]);
+  assert.deepEqual(JSON.parse(JSON.stringify(state.outputButtons.map(button => button.classList.active))), [false, true]);
+  assert.equal(state.outputDisplay, '');
+  assert.equal(state.pageSetup, 'none');
+
+  context.api.set('rows');
+  state = context.api.state();
+  assert.equal(state.outputDisplay, 'none');
+  assert.deepEqual(JSON.parse(JSON.stringify(state.ruleButtons.map(button => button.classList.active))), [false, true]);
 });

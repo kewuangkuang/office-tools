@@ -1329,6 +1329,14 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   .nup-option:hover { border-color: var(--primary); color: var(--primary); }
   .nup-option.active { background: var(--primary); color: white; border-color: var(--primary); }
   .nup-option.active span { color: rgba(255,255,255,0.8) !important; }
+  .split-field-output-row {
+    display: flex; align-items: center; justify-content: space-between; gap: 16px;
+    margin: 4px 0 8px 20px; padding: 12px 14px;
+    border: 1px solid var(--gray-200); border-left: 3px solid var(--primary);
+    border-radius: 0 10px 10px 0; background: var(--gray-50);
+  }
+  .split-field-output-row .toggle-text { font-size: 13px; font-weight: 600; }
+  .split-field-output-row .nup-options { justify-content: flex-end; }
 
   /* ===== Scroll to Top ===== */
   .scroll-top-btn {
@@ -1378,6 +1386,8 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     .header-action-row { justify-content: center; }
     .nup-options { gap: 6px; }
     .nup-option { padding: 5px 10px; font-size: 12px; }
+    .split-field-output-row { align-items: flex-start; flex-direction: column; gap: 8px; margin-left: 0; }
+    .split-field-output-row .nup-options { justify-content: flex-start; }
     .card { padding: 18px; }
     .upload-zone { min-height: 172px; padding: 28px 16px; }
     .upload-support-summary span { font-size: 11px; padding: 4px 8px; }
@@ -2559,11 +2569,18 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       <div class="card-title"><span class="icon">⚙️</span> 选择拆分方式</div>
 
       <div class="toggle-row">
-        <div class="toggle-text">选择拆分方法<small>看你希望每份文件里包含哪些数据</small></div>
-        <div class="nup-options" id="splitModeOptions">
+        <div class="toggle-text">按什么规则拆分？<small>先选择按字段拆分，还是按固定行数拆分</small></div>
+        <div class="nup-options" id="splitRuleOptions">
           <button class="nup-option active" data-mode="column" onclick="splitSetMode('column')">按某列内容分开</button>
           <button class="nup-option" data-mode="rows" onclick="splitSetMode('rows')">每 N 行分一份</button>
-          <button class="nup-option" data-mode="sheets" onclick="splitSetMode('sheets')">按字段拆成多个 Sheet</button>
+        </div>
+      </div>
+
+      <div class="split-field-output-row" id="splitFieldOutputRow">
+        <div class="toggle-text">字段拆分后怎么输出？<small>只对“按某列内容分开”生效；可以放在一个 Sheet 中，也可以每个字段一个 Sheet</small></div>
+        <div class="nup-options" id="splitFieldOutputOptions">
+          <button class="nup-option active" data-mode="column" onclick="splitSetMode('column')">一个 Sheet 内排版</button>
+          <button class="nup-option" data-mode="sheets" onclick="splitSetMode('sheets')">每个字段一个 Sheet</button>
         </div>
       </div>
 
@@ -8717,7 +8734,10 @@ function splitSetMode(mode) {
     splitMergedData = null;
     document.getElementById('splitResultCard')?.style.setProperty('display', 'none');
   }
-  document.querySelectorAll('#splitModeOptions .nup-option').forEach(b => b.classList.toggle('active', b.dataset.mode === splitMode));
+  const ruleMode = splitMode === 'sheets' ? 'column' : splitMode;
+  const outputMode = splitMode === 'sheets' ? 'sheets' : 'column';
+  document.querySelectorAll('#splitRuleOptions .nup-option').forEach(b => b.classList.toggle('active', b.dataset.mode === ruleMode));
+  document.querySelectorAll('#splitFieldOutputOptions .nup-option').forEach(b => b.classList.toggle('active', b.dataset.mode === outputMode));
   const label = document.getElementById('splitColLabel');
   const inp = document.getElementById('splitCol');
   if (splitMode === 'column') {
@@ -8731,6 +8751,8 @@ function splitSetMode(mode) {
     inp.value = 1; inp.min = 1;
   }
   const isSheetMode = splitMode === 'sheets';
+  const fieldOutputRow = document.getElementById('splitFieldOutputRow');
+  if (fieldOutputRow) fieldOutputRow.style.display = splitMode === 'rows' ? 'none' : '';
   const pageSetupCard = document.getElementById('splitPageSetupCard');
   if (pageSetupCard && splitWB) pageSetupCard.style.display = isSheetMode ? 'none' : '';
   ['splitTablesPerPageRow', 'splitOrderRow'].forEach(id => {
