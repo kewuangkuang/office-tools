@@ -1626,8 +1626,8 @@ https://github.com/nodeca/pako/blob/main/LICENSE
           <button type="button" class="tool-card" onclick="showTool('split')">
             <div class="tool-icon"><i class="ph ph-scissors" aria-hidden="true"></i></div>
             <h3>拆分表格</h3>
-            <p>按部门、人员等内容拆分，或每 N 行拆成一份</p>
-            <div class="tool-tags"><span class="tool-tag">按内容拆分</span><span class="tool-tag">每 N 行一份</span><span class="tool-tag">保留表头</span></div>
+            <p>按部门、人员等内容拆分为多个 Sheet，也可按行数拆分</p>
+            <div class="tool-tags"><span class="tool-tag">多个 Sheet</span><span class="tool-tag">按内容拆分</span><span class="tool-tag">保留表头</span></div>
           </button>
         </div>
       </section>
@@ -2563,6 +2563,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         <div class="nup-options" id="splitModeOptions">
           <button class="nup-option active" data-mode="column" onclick="splitSetMode('column')">按某列内容分开</button>
           <button class="nup-option" data-mode="rows" onclick="splitSetMode('rows')">每 N 行分一份</button>
+          <button class="nup-option" data-mode="sheets" onclick="splitSetMode('sheets')">按字段拆成多个 Sheet</button>
         </div>
       </div>
 
@@ -2572,7 +2573,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       </div>
 
       <div class="toggle-row">
-        <div class="toggle-text">每份小表要重复保留开头几行？<small>通常第 1 行是列名，保持 1 即可</small></div>
+        <div class="toggle-text">每份小表 / 每个 Sheet 要重复保留开头几行？<small>通常第 1 行是列名，保持 1 即可</small></div>
         <input type="number" id="splitHeaderRows" value="1" min="0" max="10" style="width:72px;padding:8px 12px;border:1px solid var(--gray-300);border-radius:8px;font-size:14px;color:var(--gray-700);outline:none;">
       </div>
 
@@ -2586,12 +2587,12 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         <input type="number" id="splitFirstRowH" value="20" min="8" max="60" style="width:72px;padding:8px 12px;border:1px solid var(--gray-300);border-radius:8px;font-size:14px;color:var(--gray-700);outline:none;">
       </div>
 
-      <div class="toggle-row">
+      <div class="toggle-row" id="splitTablesPerPageRow">
         <div class="toggle-text">打印时一页放几张小表？<small>默认 4 张；下面可以选择排列顺序</small></div>
         <input type="number" id="splitTablesPerPage" value="4" min="1" max="12" style="width:72px;padding:8px 12px;border:1px solid var(--gray-300);border-radius:8px;font-size:14px;color:var(--gray-700);outline:none;">
       </div>
 
-      <div class="toggle-row">
+      <div class="toggle-row" id="splitOrderRow">
         <div class="toggle-text">小表排列顺序<button type="button" class="split-order-help-trigger" id="splitOrderHelpTrigger" onclick="openSplitOrderHelp()" aria-haspopup="dialog" aria-controls="splitOrderHelpModal" aria-expanded="false">❔ 看图说明</button><small>裁剪同一位置选第一项；最后不足的表格会保留空白位置；需要原来的分页方式选第二项</small></div>
         <div class="nup-options" id="splitOrderOptions">
           <button class="nup-option active" data-order="position" onclick="splitSetOrder('position')">按位置（裁剪友好）</button>
@@ -2618,9 +2619,9 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     <div class="card" id="splitResultCard" style="display:none;">
       <div class="card-title"><span class="icon">✅</span> 拆分完成</div>
       <div class="result-stats" id="splitStats"></div>
-      <div class="preview-label">👁 拆分预览（前 100 行，空白行以…显示）</div>
+      <div class="preview-label">👁 拆分预览（按当前拆分方式显示）</div>
       <div class="preview-table-wrap" style="max-height:400px;">
-        <table class="preview-table" id="splitPreviewTable"></table>
+        <div id="splitPreviewTable"></div>
       </div>
       <div class="export-filename-row">
         <label>📄 导出文件名：</label>
@@ -8562,6 +8563,15 @@ function splitGetMaxCols(rowSets) {
   return maxCols;
 }
 
+// The selected field may be an entirely blank column just beyond the populated range.
+function splitGetFieldColumnIndex(value, maxCols, configuredMaxCols = 50) {
+  const colNumber = Number(value);
+  if (!Number.isInteger(colNumber) || colNumber < 1) return -1;
+  const populatedCols = Number.isInteger(maxCols) && maxCols > 0 ? maxCols : 1;
+  const inputCols = Number.isInteger(configuredMaxCols) && configuredMaxCols > 0 ? configuredMaxCols : 50;
+  return colNumber <= Math.max(populatedCols, inputCols) ? colNumber - 1 : -1;
+}
+
 // Some Excel files save a full-column selection as the worksheet range even when
 // only a few rows contain values. Ignore formatting-only cells when bounding data.
 function splitCellHasValue(cell) {
@@ -8616,6 +8626,57 @@ function splitReadSheetData(ws) {
   return XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', range });
 }
 
+// Keep the original row order while grouping rows by the selected field value.
+// Empty values are kept in their own group so splitting never silently drops rows.
+function splitGroupRowsByField(dataRows, colIdx) {
+  const groups = [];
+  const byKey = new Map();
+  for (const row of dataRows || []) {
+    const value = Array.isArray(row) ? row[colIdx] : '';
+    const key = String(value == null ? '' : value).trim();
+    let group = byKey.get(key);
+    if (!group) {
+      group = { key, rows: [] };
+      byKey.set(key, group);
+      groups.push(group);
+    }
+    group.rows.push(row);
+  }
+  return groups;
+}
+
+// Excel sheet names cannot contain these characters, must be unique, and are limited to 31 characters.
+function splitUniqueSheetName(value, usedNames) {
+  const used = usedNames || new Set();
+  const raw = String(value == null ? '' : value).trim();
+  let base = (raw ? raw : '空白')
+    .replace(/[\\/:*?\[\]]/g, '_')
+    .replace(/[\x00-\x1F]/g, '_')
+    .replace(/^'+|'+$/g, '_')
+    .slice(0, 31) || '空白';
+  // ExcelJS reserves this name (case-insensitively) for revision history.
+  if (base.toLowerCase() === 'history') base = 'History_';
+  const nameIsUsed = name => Array.from(used).some(existing => String(existing).toLowerCase() === name.toLowerCase());
+  let candidate = base;
+  let suffix = 2;
+  while (nameIsUsed(candidate)) {
+    const tail = '_' + suffix++;
+    candidate = base.slice(0, 31 - tail.length) + tail;
+  }
+  used.add(candidate);
+  return candidate;
+}
+
+function splitBuildFieldSheets(headers, dataRows, colIdx) {
+  const usedNames = new Set();
+  return splitGroupRowsByField(dataRows, colIdx).map(group => ({
+    key: group.key,
+    name: splitUniqueSheetName(group.key, usedNames),
+    rows: (headers || []).concat(group.rows),
+    rowCount: group.rows.length
+  }));
+}
+
 // Arrange groups by their position on the printed page instead of by page.
 // For example, 40 groups with 4 per page become pages:
 // [1,11,21,31], [2,12,22,32], ... [10,20,30,40].
@@ -8651,17 +8712,31 @@ function splitBuildPageGroups(tableGroups, tablesPerPage, order = 'position') {
 }
 
 function splitSetMode(mode) {
-  splitMode = mode;
-  document.querySelectorAll('#splitModeOptions .nup-option').forEach(b => b.classList.toggle('active', b.dataset.mode === mode));
+  splitMode = ['column', 'rows', 'sheets'].includes(mode) ? mode : 'column';
+  if (splitMergedData) {
+    splitMergedData = null;
+    document.getElementById('splitResultCard')?.style.setProperty('display', 'none');
+  }
+  document.querySelectorAll('#splitModeOptions .nup-option').forEach(b => b.classList.toggle('active', b.dataset.mode === splitMode));
   const label = document.getElementById('splitColLabel');
   const inp = document.getElementById('splitCol');
-  if (mode === 'column') {
+  if (splitMode === 'column') {
     label.innerHTML = '根据第几列的内容分组？<small>例如“部门”在 B 列就填 2；相同部门会放进同一份</small>';
     inp.value = 1; inp.min = 1;
-  } else {
+  } else if (splitMode === 'rows') {
     label.innerHTML = '每份放多少行数据？<small>不计算上面重复保留的标题行</small>';
     inp.value = 10; inp.min = 1;
+  } else {
+    label.innerHTML = '按哪一列的字段值拆分？<small>例如“部门”在 B 列填 2；相同字段值会进入同一个 Sheet，空白字段放入“空白” Sheet</small>';
+    inp.value = 1; inp.min = 1;
   }
+  const isSheetMode = splitMode === 'sheets';
+  const pageSetupCard = document.getElementById('splitPageSetupCard');
+  if (pageSetupCard && splitWB) pageSetupCard.style.display = isSheetMode ? 'none' : '';
+  ['splitTablesPerPageRow', 'splitOrderRow'].forEach(id => {
+    const row = document.getElementById(id);
+    if (row) row.style.display = isSheetMode ? 'none' : '';
+  });
 }
 function splitSetOrder(order) {
   splitOrder = order === 'page' ? 'page' : 'position';
@@ -8758,7 +8833,7 @@ function splitHandleFile(file) {
       const rows = firstData.length;
       document.getElementById('splitFileInfo').innerHTML = '<div class="file-icon-box">XLS</div><div class="file-detail"><div class="file-name">' + esc(splitFileName) + '</div><div class="file-meta">' + names.length + ' 个工作表 · ' + rows + ' 行 · ' + cols + ' 列</div></div><button class="btn-change-file" onclick="splitInput.click()">更换文件</button>';
       document.getElementById('splitInfoCard').style.display = '';
-      document.getElementById('splitPageSetupCard').style.display = '';
+      document.getElementById('splitPageSetupCard').style.display = splitMode === 'sheets' ? 'none' : '';
       document.getElementById('splitOptionsCard').style.display = '';
       document.getElementById('splitResultCard').style.display = 'none';
       setUploadClearVisible('splitClearBtn', true);
@@ -8843,6 +8918,31 @@ function splitRenderPreview(sheetName) {
   wrap.innerHTML = html;
 }
 
+function splitRenderFieldSheetPreview(sheets) {
+  const previewSheets = (sheets || []).slice(0, 3);
+  let html = '';
+  for (const sheet of previewSheets) {
+    const rows = sheet.rows.slice(0, 20);
+    const maxCols = splitGetMaxCols([rows]);
+    html += '<div style="margin-bottom:16px;">';
+    html += '<div style="font-size:13px;font-weight:600;color:var(--gray-700);margin-bottom:6px;">📄 ' + esc(sheet.name) + ' · ' + sheet.rowCount + ' 行数据</div>';
+    html += '<table class="preview-table"><thead><tr>';
+    for (let c = 0; c < maxCols; c++) html += '<th>' + esc('列' + (c + 1)) + '</th>';
+    html += '</tr></thead><tbody>';
+    for (const row of rows) {
+      html += '<tr>';
+      for (let c = 0; c < maxCols; c++) html += '<td>' + esc(fmtCell(row[c] == null ? '' : row[c])) + '</td>';
+      html += '</tr>';
+    }
+    html += '</tbody></table></div>';
+  }
+  if ((sheets || []).length > previewSheets.length) {
+    html += '<div style="font-size:12px;color:var(--gray-400);">其余 ' + ((sheets || []).length - previewSheets.length) + ' 个 Sheet 已生成，导出后可查看。</div>';
+  }
+  document.getElementById('splitPreviewInfo').textContent = '共 ' + (sheets || []).length + ' 个 Sheet，预览前 ' + previewSheets.length + ' 个';
+  document.getElementById('splitPreviewTable').innerHTML = html;
+}
+
 
 function splitExecute() {
   if (!splitWB) { showToast('请先上传文件', 'error'); return; }
@@ -8860,6 +8960,37 @@ function splitExecute() {
   const headers = srcData.slice(0, headerRows);
   const dataRows = srcData.slice(headerRows);
   const maxCols = splitGetMaxCols([headers, dataRows]);
+
+  if (splitMode === 'sheets') {
+    const configuredMaxCols = Number(document.getElementById('splitCol').max) || 50;
+    const colIdx = splitGetFieldColumnIndex(splitReadInt('splitCol', 1), maxCols, configuredMaxCols);
+    if (colIdx < 0) {
+      showToast('拆分字段列超出数据范围，请检查列号', 'error');
+      return;
+    }
+    const sheets = splitBuildFieldSheets(headers, dataRows, colIdx);
+    if (!sheets.length) { showToast('没有可拆分的数据', 'error'); return; }
+
+    splitMergedData = {
+      mode: 'sheets',
+      sheets,
+      headerRows,
+      mergeFirst,
+      maxCols,
+      tableCount: sheets.length,
+      totalRows: dataRows.length
+    };
+    document.getElementById('splitStats').innerHTML =
+      '<div class="stat-item"><div class="stat-value">' + sheets.length + '</div><div class="stat-label">Sheet 数</div></div>' +
+      '<div class="stat-item"><div class="stat-value">' + dataRows.length + '</div><div class="stat-label">数据行数</div></div>' +
+      '<div class="stat-item"><div class="stat-value">' + (colIdx + 1) + '</div><div class="stat-label">拆分字段列</div></div>' +
+      '<div class="stat-item"><div class="stat-value">' + headerRows + '</div><div class="stat-label">重复表头行数</div></div>';
+    splitRenderFieldSheetPreview(sheets);
+    document.getElementById('splitResultCard').style.display = '';
+    showToast('拆分完成！共 ' + sheets.length + ' 个 Sheet，' + dataRows.length + ' 行数据', 'success');
+    document.getElementById('splitResultCard').scrollIntoView({ behavior: 'smooth' });
+    return;
+  }
 
   // ---- Split into table groups ----
   let tableGroups = [];
@@ -8973,7 +9104,7 @@ function splitExecute() {
 
   // Preview: show first 100 rows, blank rows shown as "…"
   const prevCount = Math.min(100, outRows.length);
-  let th = '<thead><tr>';
+  let th = '<table class="preview-table"><thead><tr>';
   for (let c = 0; c < maxCols; c++) th += '<th>' + esc('列' + (c + 1)) + '</th>';
   th += '</tr></thead><tbody>';
   for (let i = 0; i < prevCount; i++) {
@@ -8985,7 +9116,7 @@ function splitExecute() {
       th += '</tr>';
     }
   }
-  th += '</tbody>';
+  th += '</tbody></table>';
   document.getElementById('splitPreviewTable').innerHTML = th;
   document.getElementById('splitResultCard').style.display = '';
   showToast('拆分完成！共 ' + tableGroups.length + ' 个表格，' + splitMergedData.pages + ' 页', 'success');
@@ -9025,11 +9156,108 @@ function centerMergedCells(ws, merges) {
   });
 }
 
+function splitExportFieldSheets(fileName) {
+  const { sheets, headerRows, mergeFirst, maxCols } = splitMergedData;
+  const addBorders = document.getElementById('splitBorders').checked;
+  const addStyles = document.getElementById('splitStyles').checked;
+  const stdH = parseFloat(document.getElementById('splitRowHeight').value) || 12;
+  const firstRowH = mergeFirst ? (parseFloat(document.getElementById('splitFirstRowH').value) || 20) : stdH;
+  const wb = new ExcelJS.Workbook();
+  const borderAll = addBorders ? {
+    top: { style: 'thin', color: { argb: 'FF000000' } },
+    left: { style: 'thin', color: { argb: 'FF000000' } },
+    bottom: { style: 'thin', color: { argb: 'FF000000' } },
+    right: { style: 'thin', color: { argb: 'FF000000' } }
+  } : null;
+  const headerFill = addStyles ? {
+    type: 'pattern',
+    pattern: 'solid',
+    fgColor: { argb: 'FF4472C4' }
+  } : null;
+  const headerFont = addStyles ? {
+    bold: true,
+    color: { argb: 'FFFFFFFF' }
+  } : null;
+
+  for (const sheet of sheets) {
+    const ws = wb.addWorksheet(sheet.name);
+    const rows = sheet.rows || [];
+    for (let r = 0; r < rows.length; r++) {
+      const row = ws.getRow(r + 1);
+      for (let c = 0; c < maxCols; c++) {
+        const value = rows[r] && rows[r][c];
+        if (value != null) row.getCell(c + 1).value = value;
+      }
+      row.height = r === 0 && mergeFirst ? firstRowH : stdH;
+    }
+
+    for (let c = 0; c < maxCols; c++) {
+      let maxW = 0;
+      for (let r = 0; r < rows.length; r++) {
+        const value = rows[r] && rows[r][c];
+        if (value == null) continue;
+        let width = 0;
+        for (const ch of String(value)) width += ch.charCodeAt(0) > 0x7F ? 2 : 1;
+        if (width > maxW) maxW = width;
+      }
+      ws.getColumn(c + 1).width = Math.max(6, Math.min(maxW + 2, 50));
+    }
+
+    for (let r = 0; r < rows.length; r++) {
+      for (let c = 0; c < maxCols; c++) {
+        const cell = ws.getRow(r + 1).getCell(c + 1);
+        if (r < headerRows && addStyles) {
+          cell.fill = headerFill;
+          cell.font = headerFont;
+        }
+        if (addBorders) cell.border = borderAll;
+      }
+    }
+
+    if (mergeFirst && headerRows > 0 && maxCols > 1) {
+      ws.mergeCells(1, 1, 1, maxCols);
+      ws.getRow(1).getCell(1).alignment = { horizontal: 'center', vertical: 'middle' };
+    }
+
+    const paperMap = { A4: 9, A3: 8, B5: 13 };
+    const cmToInch = value => (parseFloat(value) || 0) / 2.54;
+    ws.pageSetup = {
+      paperSize: paperMap[splitPaper] || 9,
+      orientation: splitOrient,
+      margins: {
+        top: cmToInch(document.getElementById('splitMarginTop').value) || 1,
+        bottom: cmToInch(document.getElementById('splitMarginBottom').value) || 1,
+        left: cmToInch(document.getElementById('splitMarginLeft').value) || 0.75,
+        right: cmToInch(document.getElementById('splitMarginRight').value) || 0.75,
+        header: 0.3,
+        footer: 0.3
+      }
+    };
+  }
+
+  wb.xlsx.writeBuffer().then(buffer => {
+    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fileName + '.xlsx';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    showToast('已导出 ' + sheets.length + ' 个 Sheet', 'success');
+  });
+}
+
 function splitExport() {
   if (!splitMergedData) return;
   const customName = document.getElementById('splitExportName').value.trim();
   const base = splitFileName.replace(/\.(xlsx|xls|csv)$/i, '');
   const fileName = customName || base + '_拆分';
+  if (splitMergedData.mode === 'sheets') {
+    splitExportFieldSheets(fileName);
+    return;
+  }
   const { rows, rowHeights, mergeFirst, maxCols, headerRows, isBlankRow, isHeaderRow } = splitMergedData;
   const rowsPerPage = parseInt(document.getElementById('splitRowsPerPage').value) || 52;
   const addBorders = document.getElementById('splitBorders').checked;
@@ -9146,6 +9374,8 @@ function splitExport() {
 }
 function splitReset() {
   splitWB = null; splitFileName = ''; splitMergedData = null; splitSelectedSheet = '';
+  splitMode = 'column';
+  splitSetMode('column');
   splitOrder = 'position';
   splitSetOrder('position');
   splitPillsExpanded = false;
