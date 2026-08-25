@@ -2948,6 +2948,13 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     </div>
     <div class="changelog-body">
       <div class="changelog-entry">
+        <div class="changelog-date">2026-08-21</div>
+        <ul>
+          <li>表格拆分新增“按字段拆成多个 Sheet”：选择字段列后，相同字段值归入同一个 Sheet，每个 Sheet 自动重复保留表头；空白字段归入“空白”Sheet，并自动处理非法、重复和超长的工作表名。</li>
+          <li>重整表格拆分选项层级：先选择“按列内容”或“按 N 行”的拆分规则，再在按列模式下选择“一个 Sheet 内排版”或“每个字段一个 Sheet”，减少理解歧义。</li>
+        </ul>
+      </div>
+      <div class="changelog-entry">
         <div class="changelog-date">2026-08-17</div>
         <ul>
           <li>首页重新整理工具分类、卡片排版和操作引导，Excel、PDF、文件与数据工具的用途更容易区分；手机端在小屏幕自动切换为单列布局。</li>
@@ -3331,9 +3338,10 @@ function pdfSplitPaddleResultForCrop(result,crop){
     .filter(Boolean);
   return {...(result||{}),lines,words,ok:lines.length>0};
 }
-async function pdfSplitRunPaddleOcr(canvas){
+async function pdfSplitRunPaddleOcr(canvas,registerCancel){
   if(!await ensurePaddleOcrLoaded())return {lines:[],words:[],blocks:[],raw:null,ok:false,error:'PaddleOCR 未加载',source:'paddle'};
   const engine=window.__pdfSplitPaddleEngine;
+  if(typeof registerCancel==='function'&&typeof engine?.cancel==='function')registerCancel(()=>pdfSplitRunCleanup(()=>engine.cancel()));
   try{
     const result=pdfSplitNormalizePaddleResult(await engine.predict(canvas,{
       textDetLimitSideLen:1600,
@@ -3386,10 +3394,15 @@ function pdfSplitFlattenTesseractWords(data){
   });
   return words;
 }
-async function pdfSplitRunTesseractOcr(canvas,parameters){
+async function pdfSplitRunTesseractOcr(canvas,parameters,registerCancel){
   if(!await ensureTesseractLoaded())return {lines:[],blocks:[],raw:null,error:'Tesseract 资源加载失败'};
   try{
     const worker=window.__pdfSplitTesseractWorker;
+    if(typeof registerCancel==='function')registerCancel(()=>{
+      if(window.__pdfSplitTesseractWorker===worker)window.__pdfSplitTesseractWorker=null;
+      tesseractInitPromise=null;
+      if(worker?.terminate)pdfSplitRunCleanup(()=>worker.terminate());
+    });
     if(parameters&&worker.setParameters)await worker.setParameters(parameters);
     const {data}=await worker.recognize(canvas);
     const rawLines=(data?.text||'').split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
@@ -5856,11 +5869,50 @@ function pdfSplitSetReceiptProgress(message, done=0, total=0, runId=null){
 }
 function pdfSplitWithTimeout(task, timeoutMs=PDF_SPLIT_OCR_TIMEOUT_MS, label='处理超时'){
   let timer=null;
-  const work=Promise.resolve().then(()=>typeof task==='function'?task():task);
+  let settled=false;
+  let rejectCancellation=null;
+  let cancelRequested=false;
+  const cancelers=[];
+  const registerCancel=fn=>{
+    if(typeof fn!=='function')return;
+    if(cancelRequested){
+      try{fn();}catch(error){}
+      return;
+    }
+    cancelers.push(fn);
+  };
+  const runCancelers=()=>{
+    cancelRequested=true;
+    cancelers.splice(0).forEach(fn=>{
+      try{fn();}catch(error){}
+    });
+  };
+  const work=Promise.resolve().then(()=>typeof task==='function'?task(registerCancel):task);
   const timeout=new Promise((_,reject)=>{
-    timer=setTimeout(()=>reject(new Error(label)),timeoutMs);
+    timer=setTimeout(()=>{
+      runCancelers();
+      reject(new Error(label));
+    },timeoutMs);
   });
-  return Promise.race([work,timeout]).finally(()=>{ if(timer)clearTimeout(timer); });
+  const cancellation=new Promise((_,reject)=>{rejectCancellation=reject;});
+  const result=Promise.race([work,timeout,cancellation]).finally(()=>{
+    settled=true;
+    if(timer)clearTimeout(timer);
+  });
+  result.cancel=function(){
+    if(settled)return;
+    runCancelers();
+    const error=new Error('处理已取消');
+    error.code='PDF_SPLIT_CANCELLED';
+    if(rejectCancellation)rejectCancellation(error);
+  };
+  return result;
+}
+function pdfSplitRunCleanup(fn){
+  try{
+    const result=typeof fn==='function'?fn():null;
+    if(result&&typeof result.catch==='function')result.catch(()=>{});
+  }catch(error){}
 }
 function pdfSplitCancel(){
   if(!pdfSplitProcessing)return;
@@ -9848,11 +9900,22 @@ var batchRecognizeSourceCanvas=null;
 var batchRecognizeSelecting=false;
 var batchRecognizeStartPoint=null;
 var batchRecognizeRunId=0;
+var batchRecognizeActiveRun=null;
 var batchRecognizeTemplateIndex=0;
 var batchRecognizeMode='rename';
 
+function batchRecognizeCancelActiveRun(){
+  var active=batchRecognizeActiveRun;
+  batchRecognizeActiveRun=null;
+  if(active&&typeof active.cancel==='function'){
+    try{active.cancel();}catch(error){}
+  }
+}
+
 function batchRecognizeSetMode(mode){
-  batchRecognizeMode=mode==='invoice'?'invoice':(mode==='extract'?'extract':'rename');
+  var nextMode=mode==='invoice'?'invoice':(mode==='extract'?'extract':'rename');
+  if(batchRecognizeMode!==nextMode)batchRecognizeCancelActiveRun();
+  batchRecognizeMode=nextMode;
   var extract=batchRecognizeMode==='extract';
   var invoice=batchRecognizeMode==='invoice';
   var setText=function(id,text){var el=document.getElementById(id);if(el)el.textContent=text;};
@@ -9984,21 +10047,51 @@ function invoiceRecognizeLines(items, fallbackLines){
   }
   return (Array.isArray(items)?items:[]).map(function(line){return String(line||'').trim();}).filter(Boolean);
 }
+function invoiceRecognizeDualLabelSpans(row,labelPattern){
+  var items=row?.items||[];
+  var spans=[];
+  var isJoiner=function(value){
+    var text=invoiceRecognizeTight(value);
+    return !text||/^[\/:：,，、()（）\[\]{}]*$/.test(text);
+  };
+  for(var start=0;start<items.length;start++){
+    var compact='';
+    for(var end=start;end<items.length&&end<start+6;end++){
+      compact+=invoiceRecognizeTight(items[end].text);
+      var match=compact.match(labelPattern);
+      if(match){
+        var prefix=compact.slice(0,match.index);
+        if(prefix&&!isJoiner(prefix))break;
+        var span={start:start,end:end};
+        var previous=spans[spans.length-1];
+        if(previous){
+          var between=items.slice(previous.end+1,span.start).map(function(item){return item.text;}).join('');
+          var startsWithJoiner=span.start===previous.end+1&&isJoiner(items[span.start]?.text);
+          if(span.start<=previous.end||startsWithJoiner||isJoiner(between)){
+            previous.end=Math.max(previous.end,span.end);
+          }else spans.push(span);
+        }else spans.push(span);
+        break;
+      }
+    }
+  }
+  spans.forEach(function(span){
+    while(span.end+1<items.length&&isJoiner(items[span.end+1].text))span.end++;
+  });
+  return spans;
+}
 function invoiceRecognizeDualValues(rows,labelPattern,cleaner){
   var values=[];
   rows.forEach(function(row){
-    var indexes=[];
-    row.items.forEach(function(item,index){
-      if(labelPattern.test(item.text))indexes.push(index);
-    });
-    if(indexes.length>=2){
-      indexes.slice(0,2).forEach(function(index,pos){
-        var end=indexes[pos+1];
-        var label=row.items[index];
-        var nextLabel=end==null?null:row.items[end];
-        var segmentItems=row.items.slice(index+1,end==null?row.items.length:end).filter(function(item){
+    var spans=invoiceRecognizeDualLabelSpans(row,labelPattern);
+    if(spans.length>=2){
+      spans.slice(0,2).forEach(function(span,pos){
+        var nextSpan=spans[pos+1];
+        var label=row.items[span.start];
+        var nextLabel=nextSpan==null?null:row.items[nextSpan.start];
+        var segmentItems=row.items.slice(span.end+1,nextSpan==null?row.items.length:nextSpan.start).filter(function(item){
           if(/下载次数|页码|第\d+页/.test(item.text))return false;
-          var verticalBand=nextLabel?Math.max(25,nextLabel.w||0):25;
+          var verticalBand=nextLabel?Math.max(25,nextLabel.w||0,(nextLabel.h||12)*2):25;
           var verticalWidth=nextLabel?Math.max(16,(nextLabel.h||12)*1.8):16;
           if(nextLabel&&item.x>nextLabel.x-verticalBand&&item.w<verticalWidth&&/^[购销买售方信息]$/.test(item.text))return false;
           return item.x>label.x+1;
@@ -10145,7 +10238,7 @@ function invoiceRecognizeExtractFields(items,fallbackLines){
   var dualTaxIds=invoiceRecognizeDualValues(rows,/统一社会信用代码|纳税人识别号/,invoiceRecognizeTight);
   dualTaxIds=dualTaxIds.map(function(value){
     var match=String(value).match(/[0-9A-Z]{15,20}/i);
-    return match?match[0].toUpperCase():value;
+    return match?match[0].toUpperCase():'';
   });
   if(dualTaxIds[0])fields.buyerTaxId=dualTaxIds[0];
   if(dualTaxIds[1])fields.sellerTaxId=dualTaxIds[1];
@@ -10359,6 +10452,7 @@ function batchRecognizeHandleFiles(list){
     showToast('这些文件已经在列表中','info');
     return 0;
   }
+  batchRecognizeCancelActiveRun();
   batchRecognizeRunId++;
   batchRecognizeFiles=mergedFiles;
   batchRecognizeDraft=null;
@@ -10406,6 +10500,7 @@ function batchRecognizeRenderTemplateOptions(){
 function batchRecognizeChooseTemplate(value){
   var index=parseInt(value,10);
   if(!Number.isInteger(index)||index<0||index>=batchRecognizeFiles.length)return;
+  batchRecognizeCancelActiveRun();
   batchRecognizeRunId++;
   batchRecognizeTemplateIndex=index;
   batchRecognizeTemplates=[];
@@ -10425,9 +10520,15 @@ function batchRecognizeFitSourceSize(width,height){
 // 只读 PDF 第一页的文字层，不做栅格化渲染。返回的对象刻意和
 // batchRecognizeRenderSource() 的画布带同样的 __batchRecognize* 元数据，
 // 这样发票识别可以先用它试文字层，不足时再补渲染。
-async function invoiceRecognizeReadPdfTextSource(file){
+async function invoiceRecognizeReadPdfTextSource(file,registerCancel){
   var pdfBytes=new Uint8Array(await file.arrayBuffer());
-  var doc=await pdfjsLib.getDocument({data:pdfBytes.slice()}).promise;
+  var loadingTask=pdfjsLib.getDocument({data:pdfBytes.slice()});
+  var doc=null;
+  if(typeof registerCancel==='function')registerCancel(function(){
+    pdfSplitRunCleanup(()=>loadingTask?.destroy?.());
+    pdfSplitRunCleanup(()=>doc?.destroy?.());
+  });
+  doc=await loadingTask.promise;
   try{
     var page=await doc.getPage(1);
     var base=page.getViewport({scale:1});
@@ -10446,7 +10547,7 @@ async function invoiceRecognizeReadPdfTextSource(file){
       __batchRecognizePdfScale:scale
     };
   }finally{
-    if(doc.destroy)await doc.destroy();
+    if(doc?.destroy){try{await doc.destroy();}catch(error){}}
   }
 }
 // 结果表格里的缩略图不需要 OCR 分辨率，按预览尺寸单独渲染一次比复用大图便宜得多。
@@ -10471,39 +10572,54 @@ async function invoiceRecognizePdfPreviewUrl(file){
     if(doc.destroy)await doc.destroy();
   }
 }
-async function batchRecognizeRenderSource(file){
+async function batchRecognizeRenderSource(file,registerCancel){
   if(file.type==='application/pdf'||/\.pdf$/i.test(file.name)){
     var pdfBytes=new Uint8Array(await file.arrayBuffer());
-    var doc=await pdfjsLib.getDocument({data:pdfBytes.slice()}).promise;
-    var page=await doc.getPage(1);
-    var base=page.getViewport({scale:1});
-    var desiredScale=Math.min(6,Math.max(3,3600/base.width));
-    var fitted=batchRecognizeFitSourceSize(base.width*desiredScale,base.height*desiredScale);
-    var scale=fitted[0]/base.width;
-    var viewport=page.getViewport({scale:scale});
-    var canvas=document.createElement('canvas');
-    canvas.width=Math.ceil(viewport.width);
-    canvas.height=Math.ceil(viewport.height);
-    var pdfContext=canvas.getContext('2d',{alpha:false});
-    pdfContext.fillStyle='#fff';
-    pdfContext.fillRect(0,0,canvas.width,canvas.height);
-    await page.render({canvasContext:pdfContext,viewport:viewport}).promise;
-    var textContent=await page.getTextContent().catch(function(){return {items:[]};});
-    canvas.__batchRecognizePdfTextItems=pdfSplitAllTextItems(textContent,viewport);
-    canvas.__batchRecognizeSourceType='pdf';
-    canvas.__batchRecognizePdfBytes=pdfBytes;
-    canvas.__batchRecognizePdfPageSize={width:base.width,height:base.height};
-    canvas.__batchRecognizePdfScale=scale;
-    if(doc.destroy)await doc.destroy();
-    return canvas;
+    var loadingTask=pdfjsLib.getDocument({data:pdfBytes.slice()});
+    var doc=null,renderTask=null;
+    if(typeof registerCancel==='function')registerCancel(function(){
+      pdfSplitRunCleanup(()=>renderTask?.cancel?.());
+      pdfSplitRunCleanup(()=>loadingTask?.destroy?.());
+      pdfSplitRunCleanup(()=>doc?.destroy?.());
+    });
+    try{
+      doc=await loadingTask.promise;
+      var page=await doc.getPage(1);
+      var base=page.getViewport({scale:1});
+      var desiredScale=Math.min(6,Math.max(3,3600/base.width));
+      var fitted=batchRecognizeFitSourceSize(base.width*desiredScale,base.height*desiredScale);
+      var scale=fitted[0]/base.width;
+      var viewport=page.getViewport({scale:scale});
+      var canvas=document.createElement('canvas');
+      canvas.width=Math.ceil(viewport.width);
+      canvas.height=Math.ceil(viewport.height);
+      var pdfContext=canvas.getContext('2d',{alpha:false});
+      pdfContext.fillStyle='#fff';
+      pdfContext.fillRect(0,0,canvas.width,canvas.height);
+      renderTask=page.render({canvasContext:pdfContext,viewport:viewport});
+      await renderTask.promise;
+      var textContent=await page.getTextContent().catch(function(){return {items:[]};});
+      canvas.__batchRecognizePdfTextItems=pdfSplitAllTextItems(textContent,viewport);
+      canvas.__batchRecognizeSourceType='pdf';
+      canvas.__batchRecognizePdfBytes=pdfBytes;
+      canvas.__batchRecognizePdfPageSize={width:base.width,height:base.height};
+      canvas.__batchRecognizePdfScale=scale;
+      return canvas;
+    }finally{
+      if(doc?.destroy){try{await doc.destroy();}catch(error){}}
+    }
   }
   var url=URL.createObjectURL(file);
+  var imageNode=null;
+  if(typeof registerCancel==='function')registerCancel(function(){
+    try{if(imageNode)imageNode.src='';}catch(error){}
+  });
   try{
     var img=await new Promise(function(resolve,reject){
-      var node=new Image();
-      node.onload=function(){resolve(node);};
-      node.onerror=function(){reject(new Error('图片读取失败'));};
-      node.src=url;
+      imageNode=new Image();
+      imageNode.onload=function(){resolve(imageNode);};
+      imageNode.onerror=function(){reject(new Error('图片读取失败'));};
+      imageNode.src=url;
     });
     var fitted=batchRecognizeFitSourceSize(img.naturalWidth,img.naturalHeight);
     var canvas=document.createElement('canvas');
@@ -10558,10 +10674,42 @@ function invoiceRecognizeHasUsefulFields(fields){
   var hasTotal=String(fields?.total||'').trim();
   return Boolean(hasType&&hasBuyer&&hasSeller&&hasAmount&&hasTax&&hasTotal);
 }
-function invoiceRecognizeHasRequiredFields(fields){
-  return ['invoiceType','buyerName','sellerName','amount','tax','total'].every(function(key){
-    return String(fields?.[key]||'').trim();
+function invoiceRecognizeParseNumber(value){
+  var raw=String(value??'').replace(/[￥¥,，元\s]/g,'').trim();
+  if(!/^-?\d+(?:\.\d+)?$/.test(raw))return null;
+  var number=Number(raw);
+  return Number.isFinite(number)?number:null;
+}
+function invoiceRecognizeValidateFields(fields){
+  var value=fields||{},issues=[];
+  var text=function(key){return String(value[key]||'').trim();};
+  if(!text('invoiceType'))issues.push('发票类型缺失');
+  if(!/^[0-9A-Z]{8,30}$/i.test(text('invoiceNumber')))issues.push('发票号码缺失或格式异常');
+  if(!/^\d{4}[年./-]\d{1,2}[月./-]\d{1,2}日?$/.test(text('invoiceDate')))issues.push('开票日期缺失或格式异常');
+  if(!text('buyerName'))issues.push('购买方名称缺失');
+  if(!text('sellerName'))issues.push('销售方名称缺失');
+  ['buyerTaxId','sellerTaxId'].forEach(function(key){
+    var taxId=text(key);
+    if(taxId&&taxId!=='/'&&!/^[0-9A-Z]{15,20}$/i.test(taxId))issues.push(key==='buyerTaxId'?'购买方税号格式异常':'销售方税号格式异常');
   });
+  var amount=invoiceRecognizeParseNumber(value.amount);
+  var tax=invoiceRecognizeParseNumber(value.tax);
+  var total=invoiceRecognizeParseNumber(value.total);
+  if(amount===null)issues.push('金额缺失或格式异常');
+  if(tax===null)issues.push('税额缺失或格式异常');
+  if(total===null)issues.push('合计缺失或格式异常');
+  if(amount!==null&&tax!==null&&total!==null&&Math.abs(amount+tax-total)>0.05){
+    issues.push('金额与税额合计不一致');
+  }
+  return {valid:issues.length===0,issues:issues};
+}
+function invoiceRecognizeHasRequiredFields(fields){
+  return invoiceRecognizeValidateFields(fields).valid;
+}
+function invoiceRecognizeCommitResult(results,result,runId,currentRunId){
+  if(runId!==currentRunId)return false;
+  results.push(result);
+  return true;
 }
 function invoiceRecognizeWordsToItems(words){
   return (words||[]).map(function(word){
@@ -10580,13 +10728,39 @@ function invoiceRecognizeMergeOcrResult(fields,result){
   Object.keys(next).forEach(function(key){if(next[key]&&!fields[key])fields[key]=next[key];});
   return fields;
 }
+function invoiceRecognizeBuildFailureResult(error,partial){
+  var message=error?.message||String(error||'识别失败');
+  var fields=partial?.fields||invoiceRecognizeEmptyFields();
+  var source=partial?.source||'识别失败';
+  var details=[partial?.error,message].filter(Boolean).filter(function(value,index,array){return array.indexOf(value)===index;});
+  return {
+    fields:fields,
+    source:source,
+    status:'需核对',
+    error:details.join('；')
+  };
+}
 // sourceCanvas 只需带上 PDF 文字层元数据；ensureCanvas 是可选的“按需渲染”回调，
 // 只有在文字层不足、真的要走 OCR 时才调用。电子发票的文字层通常够用，
 // 这样就不必为每张发票先渲染一张 OCR 分辨率的大图（那是每张几秒的开销）。
 async function invoiceRecognizeRecognizeFile(sourceCanvas,ensureCanvas){
+  var onPartial=arguments[2];
+  var onProgress=arguments[3];
+  var registerCancel=arguments[4];
+  var reportProgress=function(message){
+    if(typeof onProgress==='function'){
+      try{onProgress(message);}catch(error){}
+    }
+  };
+  var currentStageTask=null;
+  if(typeof registerCancel==='function')registerCancel(function(){
+    if(currentStageTask?.cancel)currentStageTask.cancel();
+  });
+  reportProgress(sourceCanvas?.__batchRecognizeSourceType==='pdf'?'正在读取 PDF 文字层':'正在准备图片识别');
   var textItems=sourceCanvas?.__batchRecognizePdfTextItems||[];
   var usedRawPdfText=false;
   if(sourceCanvas?.__batchRecognizePdfBytes){
+    reportProgress('正在读取 PDF 原始文字流');
     try{
       var rawItems=await invoiceRecognizeExtractRawPdfItems(sourceCanvas);
       if(rawItems.length){
@@ -10598,7 +10772,8 @@ async function invoiceRecognizeRecognizeFile(sourceCanvas,ensureCanvas){
     }
   }
   var textFields=invoiceRecognizeExtractFields(textItems);
-  if(textItems.length&&invoiceRecognizeHasUsefulFields(textFields)){
+  var textValidation=invoiceRecognizeValidateFields(textFields);
+  if(textItems.length&&invoiceRecognizeHasUsefulFields(textFields)&&textValidation.valid){
     return {
       fields:textFields,
       source:usedRawPdfText?'PDF 文字层 + 原始文字流':'PDF 文字层',
@@ -10608,11 +10783,23 @@ async function invoiceRecognizeRecognizeFile(sourceCanvas,ensureCanvas){
   }
   var fields=textFields;
   var errors=[];
+  if(typeof onPartial==='function'){
+    try{
+      onPartial({
+        fields:Object.assign({},textFields),
+        source:usedRawPdfText?'PDF 文字层 + 原始文字流':'PDF 文字层',
+        status:'需核对',
+        error:textValidation.issues.join('；')
+      });
+    }catch(error){}
+  }
   var ocrCanvas=sourceCanvas;
   if(ensureCanvas){
+    reportProgress('正在渲染发票图片');
     try{
       ocrCanvas=await ensureCanvas();
     }catch(error){
+      if(error?.code==='PDF_SPLIT_CANCELLED')throw error;
       return {
         fields:fields,
         source:'识别失败',
@@ -10621,10 +10808,15 @@ async function invoiceRecognizeRecognizeFile(sourceCanvas,ensureCanvas){
       };
     }
   }
+  reportProgress('正在运行 PaddleOCR');
+  var paddleTask=pdfSplitWithTimeout(function(registerStageCancel){
+    return pdfSplitRunPaddleOcr(ocrCanvas,registerStageCancel);
+  },PDF_SPLIT_OCR_TIMEOUT_MS,'PaddleOCR 超时');
+  currentStageTask=paddleTask;
   try{
-    var paddle=await pdfSplitWithTimeout(function(){return pdfSplitRunPaddleOcr(ocrCanvas);},PDF_SPLIT_OCR_TIMEOUT_MS,'PaddleOCR 超时');
+    var paddle=await paddleTask;
     invoiceRecognizeMergeOcrResult(fields,paddle);
-    if(invoiceRecognizeHasUsefulFields(fields)){
+    if(invoiceRecognizeHasUsefulFields(fields)&&invoiceRecognizeValidateFields(fields).valid){
       return {
         fields:fields,
         source:'PaddleOCR',
@@ -10634,12 +10826,20 @@ async function invoiceRecognizeRecognizeFile(sourceCanvas,ensureCanvas){
     }
     if(paddle?.error)errors.push('PaddleOCR：'+paddle.error);
   }catch(error){
+    if(error?.code==='PDF_SPLIT_CANCELLED')throw error;
     errors.push('PaddleOCR：'+(error.message||error));
+  }finally{
+    if(currentStageTask===paddleTask)currentStageTask=null;
   }
+  reportProgress('正在运行 Tesseract 备用识别');
+  var tessTask=pdfSplitWithTimeout(function(registerStageCancel){
+    return pdfSplitRunTesseractOcr(ocrCanvas,{tessedit_pageseg_mode:'6',preserve_interword_spaces:'1'},registerStageCancel);
+  },PDF_SPLIT_OCR_TIMEOUT_MS,'Tesseract 超时');
+  currentStageTask=tessTask;
   try{
-    var tess=await pdfSplitWithTimeout(function(){return pdfSplitRunTesseractOcr(ocrCanvas,{tessedit_pageseg_mode:'6',preserve_interword_spaces:'1'});},PDF_SPLIT_OCR_TIMEOUT_MS,'Tesseract 超时');
+    var tess=await tessTask;
     invoiceRecognizeMergeOcrResult(fields,tess);
-    if(invoiceRecognizeHasUsefulFields(fields)){
+    if(invoiceRecognizeHasUsefulFields(fields)&&invoiceRecognizeValidateFields(fields).valid){
       return {
         fields:fields,
         source:'Tesseract',
@@ -10649,13 +10849,20 @@ async function invoiceRecognizeRecognizeFile(sourceCanvas,ensureCanvas){
     }
     if(tess?.error)errors.push('Tesseract：'+tess.error);
   }catch(error){
+    if(error?.code==='PDF_SPLIT_CANCELLED')throw error;
     errors.push('Tesseract：'+(error.message||error));
+  }finally{
+    if(currentStageTask===tessTask)currentStageTask=null;
   }
+  var finalValidation=invoiceRecognizeValidateFields(fields);
+  var diagnostics=errors.concat(finalValidation.issues||[]).filter(function(value,index,array){
+    return value&&array.indexOf(value)===index;
+  });
   return {
     fields:fields,
     source:textItems.length?(usedRawPdfText?'PDF 文字层 + 原始文字流':'PDF 文字层'):'识别失败',
-    status:invoiceRecognizeHasRequiredFields(fields)?'已识别':'需核对',
-    error:errors.join('；')||'未识别到足够的发票字段'
+    status:finalValidation.valid?'已识别':'需核对',
+    error:diagnostics.join('；')||'未识别到足够的发票字段'
   };
 }
 async function batchRecognizeLoadTemplate(){
@@ -10962,19 +11169,24 @@ async function batchRecognizeOcr(crop,enhanced){
 }
 // PDF 走“先文字层、不足才渲染”的路线；图片没有文字层，只能直接渲染后 OCR。
 async function invoiceRecognizeProcessFile(file,isPdf){
+  var onPartial=arguments[2];
+  var onProgress=arguments[3];
+  var registerCancel=arguments[4];
   if(!isPdf){
-    var imageCanvas=await batchRecognizeRenderSource(file);
+    if(typeof onProgress==='function')onProgress('正在读取图片');
+    var imageCanvas=await batchRecognizeRenderSource(file,registerCancel);
     return {
-      recognized:await invoiceRecognizeRecognizeFile(imageCanvas),
+      recognized:await invoiceRecognizeRecognizeFile(imageCanvas,null,onPartial,onProgress,registerCancel),
       previewUrl:batchRecognizeMakePreviewUrl(imageCanvas)
     };
   }
-  var textSource=await invoiceRecognizeReadPdfTextSource(file);
+  if(typeof onProgress==='function')onProgress('正在读取 PDF 文字层');
+  var textSource=await invoiceRecognizeReadPdfTextSource(file,registerCancel);
   var renderedCanvas=null;
   var recognized=await invoiceRecognizeRecognizeFile(textSource,async function(){
-    renderedCanvas=await batchRecognizeRenderSource(file);
+    renderedCanvas=await batchRecognizeRenderSource(file,registerCancel);
     return renderedCanvas;
-  });
+  },onPartial,onProgress,registerCancel);
   // 走 OCR 时画布已经渲染好了，顺手复用；纯文字层的发票一张图都不渲染，
   // 缩略图留到用户点击预览时再按需生成。
   return {
@@ -10984,7 +11196,10 @@ async function invoiceRecognizeProcessFile(file,isPdf){
 }
 async function invoiceRecognizeStart(){
   if(!batchRecognizeFiles.length){showToast('请先选择发票 PDF 或图片','error');return;}
+  batchRecognizeCancelActiveRun();
   var runId=++batchRecognizeRunId;
+  var files=Array.from(batchRecognizeFiles);
+  var total=files.length;
   var progressCard=document.getElementById('batchRecognizeProgressCard');
   var progressBar=document.getElementById('batchRecognizeProgressBar');
   var progressText=document.getElementById('batchRecognizeProgressText');
@@ -10994,39 +11209,53 @@ async function invoiceRecognizeStart(){
   document.getElementById('batchRecognizeResultCard').style.display='none';
   startBtn.disabled=true;
   batchRecognizeResults=[];
+  var currentFileTask=null;
+  var runState={cancel:function(){if(currentFileTask?.cancel)currentFileTask.cancel();}};
+  batchRecognizeActiveRun=runState;
   try{
     progressText.textContent='正在准备发票识别；PDF 会先读取文字层，扫描件和图片再使用本地 OCR…';
-    for(var i=0;i<batchRecognizeFiles.length;i++){
+    for(var i=0;i<files.length;i++){
       if(runId!==batchRecognizeRunId)return;
-      var file=batchRecognizeFiles[i];
-      progressText.textContent='正在识别发票 '+(i+1)+' / '+batchRecognizeFiles.length+'：'+file.name;
-      progressBar.style.width=Math.round(i/batchRecognizeFiles.length*100)+'%';
+      var file=files[i];
+      progressText.textContent='正在识别发票 '+(i+1)+' / '+total+'：'+file.name;
+      progressBar.style.width=Math.round(i/total*100)+'%';
       var isPdf=file.type==='application/pdf'||/\.pdf$/i.test(file.name);
       var recognized,previewUrl='';
+      var partialRecognized=null;
       try{
-        var outcome=await pdfSplitWithTimeout(function(){
-          return invoiceRecognizeProcessFile(file,isPdf);
+        currentFileTask=pdfSplitWithTimeout(function(registerCancel){
+          return invoiceRecognizeProcessFile(
+            file,
+            isPdf,
+            function(partial){partialRecognized=partial;},
+            function(stage){
+              if(runId===batchRecognizeRunId)progressText.textContent='正在识别发票 '+(i+1)+' / '+total+'：'+file.name+' · '+stage;
+            },
+            registerCancel
+          );
         },INVOICE_RECOGNIZE_FILE_TIMEOUT_MS,'单张发票处理超时（45 秒），可能文件过大或已损坏');
+        var outcome=await currentFileTask;
         recognized=outcome.recognized;
         previewUrl=outcome.previewUrl;
       }catch(error){
-        recognized={
-          fields:invoiceRecognizeEmptyFields(),
-          source:'识别失败',
-          status:'需核对',
-          error:error.message||String(error)
-        };
+        if(runId!==batchRecognizeRunId||error?.code==='PDF_SPLIT_CANCELLED')return;
+        recognized=invoiceRecognizeBuildFailureResult(error,partialRecognized);
+      }finally{
+        currentFileTask=null;
       }
-      batchRecognizeResults.push({
+      if(runId!==batchRecognizeRunId)return;
+      var result={
         file:file,
         fields:recognized.fields,
         source:recognized.source,
         status:recognized.status,
         error:recognized.error||'',
         previewUrl:previewUrl
-      });
+      };
+      if(!invoiceRecognizeCommitResult(batchRecognizeResults,result,runId,batchRecognizeRunId))return;
       await new Promise(function(resolve){setTimeout(resolve,0);});
     }
+    if(runId!==batchRecognizeRunId)return;
     progressBar.style.width='100%';
     progressText.textContent='识别完成，共 '+batchRecognizeResults.length+' 张发票；Excel 已准备好，可直接下载';
     batchRecognizeRenderResults();
@@ -11034,13 +11263,16 @@ async function invoiceRecognizeStart(){
     document.getElementById('batchRecognizeResultCard').scrollIntoView({behavior:'smooth',block:'start'});
     showToast('发票识别完成，可下载 Excel','success');
   }catch(error){
+    if(runId!==batchRecognizeRunId||error?.code==='PDF_SPLIT_CANCELLED')return;
     progressText.textContent='识别失败：'+(error.message||error);
     showToast(error.message||'发票识别失败','error');
   }finally{
-    if(window.__pdfSplitTesseractWorker?.setParameters){
+    var ownsRun=batchRecognizeActiveRun===runState;
+    if(ownsRun)batchRecognizeActiveRun=null;
+    if(ownsRun&&window.__pdfSplitTesseractWorker?.setParameters){
       try{await window.__pdfSplitTesseractWorker.setParameters({tessedit_pageseg_mode:'3',preserve_interword_spaces:'0'});}catch(e){}
     }
-    startBtn.disabled=false;
+    if(ownsRun)startBtn.disabled=false;
   }
 }
 async function batchRecognizeStart(){
@@ -11437,6 +11669,7 @@ async function batchRecognizeDownload(){
   }catch(err){showToast('打包失败：'+err.message,'error');}
 }
 function batchRecognizeReset(){
+  batchRecognizeCancelActiveRun();
   batchRecognizeRunId++;
   batchRecognizeFiles=[];
   batchRecognizeTemplateIndex=0;

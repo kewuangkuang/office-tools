@@ -81,6 +81,28 @@ test('invoice parser extracts common fields from a PDF text layer', () => {
   assert.equal(fields.issuer, '周艳');
 });
 
+test('invoice parser combines split name and tax-id labels from electronic invoice text', () => {
+  const start = html.indexOf('var INVOICE_RECOGNIZE_COLUMNS=');
+  const end = html.indexOf('\nasync function invoiceRecognizeRecognizeFile(', start);
+  assert.ok(start >= 0 && end > start, 'invoice parser helpers should exist');
+
+  const context = {};
+  vm.createContext(context);
+  vm.runInContext(`${html.slice(start, end)}\nthis.fn=invoiceRecognizeExtractFields;`, context);
+
+  const fields = context.fn([
+    item('名', 40, 100, 9), item('称', 49, 100, 9), item(':', 58, 100, 5), item('成都杏方健康科技有限公司', 70, 100, 100), item('售', 304, 100, 9),
+    item('名', 325, 100, 9), item('称', 334, 100, 9), item(':', 343, 100, 5), item('广东京邦达供应链科技有限公司', 355, 100, 112),
+    item('统一社会信用代码', 40, 120, 72), item('/', 112, 120, 5), item('纳税人识别号', 118, 120, 54), item(':', 172, 120, 5), item('91510106MA62ANFX28', 180, 120, 86),
+    item('统一社会信用代码', 327, 120, 72), item('/', 399, 120, 5), item('纳税人识别号', 405, 120, 54), item(':', 459, 120, 5), item('91440101MA59R8Q251', 467, 120, 86)
+  ]);
+
+  assert.equal(fields.buyerName, '成都杏方健康科技有限公司');
+  assert.equal(fields.sellerName, '广东京邦达供应链科技有限公司');
+  assert.equal(fields.buyerTaxId, '91510106MA62ANFX28');
+  assert.equal(fields.sellerTaxId, '91440101MA59R8Q251');
+});
+
 test('invoice parser ignores summary and remarks rows when reading fixed invoice columns', () => {
   const start = html.indexOf('var INVOICE_RECOGNIZE_COLUMNS=');
   const end = html.indexOf('\nasync function invoiceRecognizeRecognizeFile(', start);
@@ -212,4 +234,71 @@ test('malformed PDF fallback decodes UTF-16BE text streams with their positions'
   assert.equal(items[0].text, '成都杏林大药房有限责任公司锦江区二环路东五段药店');
   assert.equal(items[0].x, 59.5);
   assert.equal(items[0].y, 108.5);
+});
+
+test('invoice timeout keeps fields already extracted from the PDF text layer', () => {
+  const start = html.indexOf('var INVOICE_RECOGNIZE_COLUMNS=');
+  const end = html.indexOf('\nasync function invoiceRecognizeRecognizeFile(', start);
+  assert.ok(start >= 0 && end > start, 'invoice result helpers should exist');
+
+  const context = {};
+  vm.createContext(context);
+  vm.runInContext(`${html.slice(start, end)}\nthis.fn=invoiceRecognizeBuildFailureResult;`, context);
+
+  const fields = { invoiceType: '专票', invoiceNumber: '26447000001535882591', amount: '12.20' };
+  const result = context.fn(
+    { message: '单张发票处理超时（45 秒）' },
+    { fields, source: 'PDF 文字层', status: '需核对' }
+  );
+
+  assert.deepEqual(result.fields, fields);
+  assert.equal(result.source, 'PDF 文字层');
+  assert.equal(result.status, '需核对');
+  assert.equal(result.error, '单张发票处理超时（45 秒）');
+});
+
+test('invoice validation catches missing metadata and inconsistent totals', () => {
+  const start = html.indexOf('var INVOICE_RECOGNIZE_COLUMNS=');
+  const end = html.indexOf('\nasync function invoiceRecognizeRecognizeFile(', start);
+  assert.ok(start >= 0 && end > start, 'invoice validation helpers should exist');
+
+  const context = {};
+  vm.createContext(context);
+  vm.runInContext(`${html.slice(start, end)}\nthis.fn=invoiceRecognizeValidateFields;`, context);
+
+  const fields = {
+    invoiceType: '专票',
+    invoiceNumber: '26447000001535882591',
+    invoiceDate: '2026年08月20日',
+    buyerName: '成都杏方健康科技有限公司',
+    sellerName: '广东京邦达供应链科技有限公司',
+    buyerTaxId: '91510106MA62ANFX28',
+    sellerTaxId: '91440101MA59R8Q251',
+    amount: '12.20',
+    taxRate: '6%',
+    tax: '0.73',
+    total: '12.93'
+  };
+  assert.equal(context.fn(fields).valid, true);
+
+  const invalid = context.fn({...fields, invoiceNumber: '', total: '20.00'});
+  assert.equal(invalid.valid, false);
+  assert.match(invalid.issues.join('；'), /发票号码/);
+  assert.match(invalid.issues.join('；'), /金额/);
+});
+
+test('stale invoice results cannot be committed to a newer batch', () => {
+  const start = html.indexOf('var INVOICE_RECOGNIZE_COLUMNS=');
+  const end = html.indexOf('\nasync function invoiceRecognizeRecognizeFile(', start);
+  assert.ok(start >= 0 && end > start, 'invoice result commit helper should exist');
+
+  const context = {};
+  vm.createContext(context);
+  vm.runInContext(`${html.slice(start, end)}\nthis.fn=invoiceRecognizeCommitResult;`, context);
+
+  const results = [];
+  assert.equal(context.fn(results, {file: 'old.pdf'}, 1, 2), false);
+  assert.deepEqual(results, []);
+  assert.equal(context.fn(results, {file: 'new.pdf'}, 2, 2), true);
+  assert.deepEqual(results, [{file: 'new.pdf'}]);
 });
