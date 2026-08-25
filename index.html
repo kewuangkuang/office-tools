@@ -10011,11 +10011,11 @@ function invoiceRecognizeDualValues(rows,labelPattern,cleaner){
   return values;
 }
 function invoiceRecognizeFindHeaderCenter(row,pattern,pair){
-  var match=row.items.find(function(item){return pattern.test(item.text);});
+  var match=row.items.find(function(item){return pattern.test(invoiceRecognizeTight(item.text));});
   if(match)return match.x+match.w/2;
   if(pair){
     for(var i=0;i<row.items.length-1;i++){
-      if(row.items[i].text===pair[0]&&row.items[i+1].text===pair[1]){
+      if(invoiceRecognizeTight(row.items[i].text)===pair[0]&&invoiceRecognizeTight(row.items[i+1].text)===pair[1]){
         return (row.items[i].x+row.items[i].w/2+row.items[i+1].x+row.items[i+1].w/2)/2;
       }
     }
@@ -10024,7 +10024,8 @@ function invoiceRecognizeFindHeaderCenter(row,pattern,pair){
 }
 function invoiceRecognizeTableValues(rows){
   var headerIndex=rows.findIndex(function(row){
-    return /项目名称/.test(row.text)&&(/金额/.test(row.text)||/税额/.test(row.text));
+    var compact=invoiceRecognizeTight(row.text);
+    return /项目名称/.test(compact)&&(/金额/.test(compact)||/税额/.test(compact));
   });
   if(headerIndex<0)return {};
   var header=rows[headerIndex];
@@ -10040,10 +10041,10 @@ function invoiceRecognizeTableValues(rows){
   ].filter(function(def){return def.center!==null;}).sort(function(a,b){return a.center-b.center;});
   if(defs.length<2)return {};
   var totalIndex=rows.findIndex(function(row,index){
-    return index>headerIndex&&/价税合计|合计/.test(row.text);
+    return index>headerIndex&&/价税合计|合计/.test(invoiceRecognizeTight(row.text));
   });
   var bodyRows=rows.slice(headerIndex+1,totalIndex<0?rows.length:totalIndex).filter(function(row){
-    var text=String(row.text||'');
+    var text=invoiceRecognizeTight(row.text);
     if(!text||row.y<=header.y)return false;
     return !/合计|价税合计|大写|小写|开户银行|银行账号|备注|开票人|[¥￥]|人民币|^合$|^计$/.test(text);
   });
@@ -10549,15 +10550,18 @@ async function invoiceRecognizeExtractRawPdfItems(sourceCanvas){
   );
 }
 function invoiceRecognizeHasUsefulFields(fields){
+  var hasType=String(fields?.invoiceType||'').trim();
   var hasBuyer=String(fields?.buyerName||'').trim();
   var hasSeller=String(fields?.sellerName||'').trim();
-  var hasMoney=String(fields?.amount||fields?.total||'').trim();
-  return Boolean(hasBuyer&&hasSeller&&hasMoney);
+  var hasAmount=String(fields?.amount||'').trim();
+  var hasTax=String(fields?.tax||'').trim();
+  var hasTotal=String(fields?.total||'').trim();
+  return Boolean(hasType&&hasBuyer&&hasSeller&&hasAmount&&hasTax&&hasTotal);
 }
 function invoiceRecognizeHasRequiredFields(fields){
-  return ['invoiceType','buyerName','sellerName','amount','tax','total'].filter(function(key){
+  return ['invoiceType','buyerName','sellerName','amount','tax','total'].every(function(key){
     return String(fields?.[key]||'').trim();
-  }).length>=4;
+  });
 }
 function invoiceRecognizeWordsToItems(words){
   return (words||[]).map(function(word){
