@@ -514,6 +514,26 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     border-top: 1px solid var(--gray-100);
   }
 
+  /* Template selection must fit the whole source page at the current browser zoom. */
+  #templateSelectModal .crop-adjust-modal {
+    width: min(840px, calc(100vw - 24px));
+    height: min(820px, calc(100vh - 24px));
+    max-height: calc(100vh - 24px);
+  }
+  #templateSelectModal .crop-adjust-body { min-height: 0; }
+  #templateSelectModal .crop-adjust-canvas-wrap {
+    min-height: 0;
+    overflow: auto;
+    align-items: flex-start;
+  }
+  #templateSelectModal .crop-adjust-canvas-wrap canvas {
+    width: auto;
+    height: auto;
+    max-width: 100%;
+    max-height: 100%;
+    flex: 0 0 auto;
+  }
+
   /* ===== Container ===== */
   .container { max-width: 860px; margin: 0 auto; padding: 24px 16px 60px; }
   .tool-page { width: 100%; max-width: 860px; margin: 0 auto; }
@@ -2382,23 +2402,6 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       </div>
     </div>
 
-    <!-- PDF独立悬浮预览面板 -->
-    <div id="pdfPreviewPanel" style="display:none;position:fixed;top:80px;right:24px;width:480px;height:560px;background:white;border-radius:14px;box-shadow:0 8px 40px rgba(0,0,0,0.18);z-index:9999;overflow:hidden;border:1px solid var(--gray-200);min-width:300px;min-height:200px;">
-      <div style="position:absolute;top:0;left:0;right:0;height:8px;cursor:ns-resize;z-index:10000;" onmousedown="startResizePdfPanel(event,'n')"></div>
-      <div style="position:absolute;bottom:0;left:0;right:0;height:8px;cursor:ns-resize;z-index:10000;" onmousedown="startResizePdfPanel(event,'s')"></div>
-      <div style="position:absolute;left:0;top:0;bottom:0;width:8px;cursor:ew-resize;z-index:10000;" onmousedown="startResizePdfPanel(event,'w')"></div>
-      <div style="position:absolute;right:0;top:0;bottom:0;width:8px;cursor:ew-resize;z-index:10000;" onmousedown="startResizePdfPanel(event,'e')"></div>
-      <div style="position:absolute;top:0;left:0;width:12px;height:12px;cursor:nwse-resize;z-index:10001;" onmousedown="startResizePdfPanel(event,'nw')"></div>
-      <div style="position:absolute;top:0;right:0;width:12px;height:12px;cursor:nesw-resize;z-index:10001;" onmousedown="startResizePdfPanel(event,'ne')"></div>
-      <div style="position:absolute;bottom:0;left:0;width:12px;height:12px;cursor:nesw-resize;z-index:10001;" onmousedown="startResizePdfPanel(event,'sw')"></div>
-      <div style="position:absolute;bottom:0;right:0;width:12px;height:12px;cursor:nwse-resize;z-index:10001;" onmousedown="startResizePdfPanel(event,'se')"></div>
-      <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;background:linear-gradient(135deg,#E07A5F,#D96B4F);color:white;font-size:13px;font-weight:600;cursor:move;" onmousedown="startDragPdfPanel(event)">
-        <span id="pdfPreviewPanelTitle">📄 PDF 预览</span>
-        <button onclick="closePdfPreview()" style="border:none;background:rgba(255,255,255,0.2);color:white;border-radius:50%;width:24px;height:24px;cursor:pointer;font-size:14px;line-height:1;">✕</button>
-      </div>
-      <div id="pdfPreviewPanelBody" style="padding:0;height:calc(100% - 44px);background:var(--gray-100);"></div>
-    </div>
-
     <!-- Result -->
     <div class="card" id="pdfSplitResultCard" style="display:none;">
       <div class="card-title"><span class="icon">✅</span> 拆分完成</div>
@@ -2652,6 +2655,72 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   </div>
 
 </div>
+
+<!-- PDF独立悬浮预览面板：放在所有工具页之外，合并页显示时不会被隐藏的拆分页父容器遮住 -->
+<div id="pdfPreviewPanel" style="display:none;position:fixed;top:80px;right:24px;width:480px;height:560px;background:white;border-radius:14px;box-shadow:0 8px 40px rgba(0,0,0,0.18);z-index:9999;overflow:hidden;border:1px solid var(--gray-200);min-width:300px;min-height:200px;">
+  <div style="position:absolute;top:0;left:0;right:0;height:8px;cursor:ns-resize;z-index:10000;" onmousedown="startResizePdfPanel(event,'n')"></div>
+  <div style="position:absolute;bottom:0;left:0;right:0;height:8px;cursor:ns-resize;z-index:10000;" onmousedown="startResizePdfPanel(event,'s')"></div>
+  <div style="position:absolute;left:0;top:0;bottom:0;width:8px;cursor:ew-resize;z-index:10000;" onmousedown="startResizePdfPanel(event,'w')"></div>
+  <div style="position:absolute;right:0;top:0;bottom:0;width:8px;cursor:ew-resize;z-index:10000;" onmousedown="startResizePdfPanel(event,'e')"></div>
+  <div style="position:absolute;top:0;left:0;width:12px;height:12px;cursor:nwse-resize;z-index:10001;" onmousedown="startResizePdfPanel(event,'nw')"></div>
+  <div style="position:absolute;top:0;right:0;width:12px;height:12px;cursor:nesw-resize;z-index:10001;" onmousedown="startResizePdfPanel(event,'ne')"></div>
+  <div style="position:absolute;bottom:0;left:0;width:12px;height:12px;cursor:nesw-resize;z-index:10001;" onmousedown="startResizePdfPanel(event,'sw')"></div>
+  <div style="position:absolute;bottom:0;right:0;width:12px;height:12px;cursor:nwse-resize;z-index:10001;" onmousedown="startResizePdfPanel(event,'se')"></div>
+  <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;background:linear-gradient(135deg,#E07A5F,#D96B4F);color:white;font-size:13px;font-weight:600;cursor:move;" onmousedown="startDragPdfPanel(event)">
+    <span id="pdfPreviewPanelTitle">📄 PDF 预览</span>
+    <button onclick="closePdfPreview()" style="border:none;background:rgba(255,255,255,0.2);color:white;border-radius:50%;width:24px;height:24px;cursor:pointer;font-size:14px;line-height:1;">✕</button>
+  </div>
+  <div id="pdfPreviewPanelBody" style="padding:0;height:calc(100% - 44px);background:var(--gray-100);"></div>
+</div>
+
+<style id="pdfPreviewLayerStyles">
+  .pdf-preview-page-frame { position:relative; margin:0 auto; overflow:hidden; background:#fff; border-radius:8px; box-shadow:0 2px 12px rgba(0,0,0,.12); --scale-factor:1; }
+  .pdf-preview-page-frame > canvas { position:absolute; inset:0; display:block; width:100%; height:100%; background:#fff; }
+  .pdf-preview-page-frame .pdf-preview-xfa-layer,
+  .pdf-preview-page-frame .pdf-preview-annotation-layer { position:absolute; inset:0; width:100%; height:100%; transform-origin:0 0; }
+  .pdf-preview-page-frame .annotationLayer { position:absolute; inset:0; overflow:visible; transform-origin:0 0; pointer-events:none; }
+  .pdf-preview-page-frame .annotationLayer section { position:absolute; box-sizing:border-box; transform-origin:0 0; pointer-events:auto; text-align:initial; }
+  .pdf-preview-page-frame .annotationLayer .linkAnnotation > a,
+  .pdf-preview-page-frame .annotationLayer .buttonWidgetAnnotation.pushButton > a { position:absolute; inset:0; width:100%; height:100%; }
+  .pdf-preview-page-frame .annotationLayer .textWidgetAnnotation input,
+  .pdf-preview-page-frame .annotationLayer .textWidgetAnnotation textarea,
+  .pdf-preview-page-frame .annotationLayer .choiceWidgetAnnotation select,
+  .pdf-preview-page-frame .annotationLayer .buttonWidgetAnnotation.checkBox input,
+  .pdf-preview-page-frame .annotationLayer .buttonWidgetAnnotation.radioButton input { box-sizing:border-box; width:100%; height:100%; margin:0; border:1px solid transparent; background:transparent; font:calc(9px * var(--scale-factor)) sans-serif; vertical-align:top; }
+  .pdf-preview-page-frame .annotationLayer .textWidgetAnnotation textarea { resize:none; }
+  .pdf-preview-page-frame .annotationLayer .buttonWidgetAnnotation.checkBox input,
+  .pdf-preview-page-frame .annotationLayer .buttonWidgetAnnotation.radioButton input { appearance:none; }
+  .pdf-preview-page-frame .annotationLayer .buttonWidgetAnnotation.radioButton input { border-radius:50%; }
+  .pdf-preview-page-frame .xfaLayer { position:absolute; top:0; left:0; overflow:hidden; transform-origin:0 0; line-height:1.2; text-align:initial; }
+  .pdf-preview-page-frame .xfaLayer * { box-sizing:border-box; color:inherit; font:inherit; font-style:inherit; font-weight:inherit; letter-spacing:inherit; text-align:inherit; text-decoration:inherit; background-color:transparent; padding:0; margin:0; line-height:inherit; }
+  .pdf-preview-page-frame .xfaLayer div,
+  .pdf-preview-page-frame .xfaLayer svg,
+  .pdf-preview-page-frame .xfaLayer svg * { pointer-events:none; }
+  .pdf-preview-page-frame .xfaPage { position:relative; overflow:hidden; }
+  .pdf-preview-page-frame .xfaContentarea { position:absolute; }
+  .pdf-preview-page-frame .xfaFont { color:#000; font-weight:normal; font-size:10px; font-style:normal; letter-spacing:0; text-decoration:none; }
+  .pdf-preview-page-frame .xfaCaption { overflow:hidden; flex:0 0 auto; }
+  .pdf-preview-page-frame .xfaCaptionForCheckButton { overflow:hidden; flex:1 1 auto; }
+  .pdf-preview-page-frame .xfaLeft { display:flex; flex-direction:row; align-items:center; }
+  .pdf-preview-page-frame .xfaRight { display:flex; flex-direction:row-reverse; align-items:center; }
+  .pdf-preview-page-frame .xfaTop { display:flex; flex-direction:column; align-items:flex-start; }
+  .pdf-preview-page-frame .xfaBottom { display:flex; flex-direction:column-reverse; align-items:flex-start; }
+  .pdf-preview-page-frame .xfaTextfield,
+  .pdf-preview-page-frame .xfaSelect { width:100%; height:100%; flex:1 1 auto; border:none; resize:none; background:transparent; }
+  .pdf-preview-page-frame .xfaButton { width:100%; height:100%; border:none; text-align:center; }
+  .pdf-preview-page-frame .xfaCheckbox,
+  .pdf-preview-page-frame .xfaRadio { width:100%; height:100%; border:none; }
+  .pdf-preview-page-frame .xfaRich { width:100%; height:100%; white-space:pre-wrap; }
+  .pdf-preview-page-frame .xfaImage { width:100%; height:100%; object-fit:contain; object-position:left top; }
+  .pdf-preview-page-frame .xfaLrTb,
+  .pdf-preview-page-frame .xfaRlTb,
+  .pdf-preview-page-frame .xfaTb { display:flex; flex-direction:column; align-items:stretch; }
+  .pdf-preview-page-frame .xfaLr { display:flex; flex-direction:row; align-items:stretch; }
+  .pdf-preview-page-frame .xfaRl { display:flex; flex-direction:row-reverse; align-items:stretch; }
+  .pdf-preview-page-frame .xfaValignMiddle { display:flex; align-items:center; }
+  .pdf-preview-page-frame .xfaTable { display:flex; flex-direction:column; align-items:stretch; }
+  .pdf-preview-page-frame .xfaTable .xfaRow { display:flex; flex-direction:row; align-items:stretch; }
+</style>
 
   <div class="tool-page" id="page-rename" style="display:none;">
     <div class="tool-header">
@@ -3060,7 +3129,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       <div class="crop-adjust-info" id="templateSelectInfo">按 1、2、3 的顺序，在图片上依次框选每张回单区域</div>
       <div class="template-select-legend" id="templateSelectLegend" aria-label="框选顺序说明"></div>
       <div class="crop-adjust-canvas-wrap" id="templateSelectWrap" style="cursor:crosshair;">
-        <canvas id="templateSelectCanvas" style="display:block;max-width:100%;max-height:62vh;"></canvas>
+        <canvas id="templateSelectCanvas" style="display:block;"></canvas>
       </div>
       <div class="crop-adjust-actions">
         <button class="btn btn-outline" onclick="pdfSplitClearTemplateRects()" id="templateClearBtn" style="display:none;">重新框选</button>
@@ -3164,7 +3233,8 @@ function showHome() {
   document.getElementById('sheetOptionsCard').style.display = 'none';
   document.getElementById('sheetResultCard').style.display = 'none';
   // Reset PDF state
-  pdfFiles = []; pdfMergedBytes = null; pdfListExpanded = false; pdfNup = 1;
+  if(typeof closePdfPreview==='function') closePdfPreview();
+  pdfFiles = []; pdfMergedBytes = null; pdfMergeSourcePages = []; pdfListExpanded = false; pdfNup = 1;
   document.querySelectorAll('#nupOptions .nup-option').forEach(btn => btn.classList.toggle('active', parseInt(btn.dataset.nup) === 1));
   document.getElementById('pdfFileList').innerHTML = '';
   document.getElementById('pdfListCard').style.display = 'none';
@@ -4948,6 +5018,11 @@ function sheetClearAll(){
 // TOOL 3: PDF MERGE
 // ==========================================
 let pdfNup = 1; // default 1 page per sheet
+function pdfGetMergePreviewSource(index, sourcePages, nup) {
+  if (nup !== 1 || !Array.isArray(sourcePages) || !sourcePages[index]) return null;
+  const source = sourcePages[index];
+  return { bytes: source.data, pageNumbers: [source.pageNumber] };
+}
 function setNup(n) {
   pdfNup = n;
   document.querySelectorAll('#nupOptions .nup-option').forEach(btn => {
@@ -4958,6 +5033,7 @@ let pdfFiles = []; // { name, size, pageCount, data (ArrayBuffer), pageRange }
 let pdfMergedBytes = null;
 let pdfMergePreviewDoc = null;
 let pdfMergePageBlobs = {};
+let pdfMergeSourcePages = [];
 let pdfListExpanded = false;
 
 const pdfZone = document.getElementById('pdfUploadZone');
@@ -5023,6 +5099,7 @@ async function pdfHandleFiles(files) {
   document.getElementById('pdfResultCard').style.display = 'none';
   setUploadClearVisible('pdfClearBtn', pdfFiles.length>0);
   pdfMergedBytes = null;
+  pdfMergeSourcePages = [];
   showToast('已读取 ' + pdfFiles.length + ' 个 PDF', 'success');
 }
 
@@ -5114,6 +5191,152 @@ function pdfBytesForPdfJs(bytes) {
   return new Uint8Array(bytes);
 }
 
+function pdfPreviewDocumentOptions(bytes) {
+  return { data: pdfBytesForPdfJs(bytes), enableXfa: true };
+}
+
+function pdfPreviewCanvasAnnotationMode() {
+  return window.pdfjsLib && window.pdfjsLib.AnnotationMode
+    ? window.pdfjsLib.AnnotationMode.ENABLE
+    : 0;
+}
+
+function pdfPreviewLinkService() {
+  return {
+    addLinkAttributes(link, url, newWindow) {
+      link.href = url || '';
+      link.target = newWindow ? '_blank' : '_self';
+      link.rel = 'noopener noreferrer';
+    },
+    getAnchorUrl(anchor) { return anchor || '#'; },
+    getDestinationHash() { return '#'; },
+    goToDestination() {},
+    executeNamedAction() {}
+  };
+}
+
+const pdfPreviewOptionalContentCache = new WeakMap();
+async function pdfPreviewGetOptionalContentConfig(doc) {
+  if (!doc || typeof doc.getOptionalContentConfig !== 'function') return null;
+  if (pdfPreviewOptionalContentCache.has(doc)) return pdfPreviewOptionalContentCache.get(doc);
+  const configPromise = (async () => {
+    try {
+      const config = await doc.getOptionalContentConfig();
+      const groups = typeof config?.getGroups === 'function' ? config.getGroups() : null;
+      if (groups && typeof config.setVisibility === 'function') {
+        Object.keys(groups).forEach(id => config.setVisibility(id, true));
+      }
+      return config;
+    } catch (e) {
+      console.warn('读取 PDF 可选内容图层失败', e);
+      return null;
+    }
+  })();
+  pdfPreviewOptionalContentCache.set(doc, configPromise);
+  return configPromise;
+}
+
+function pdfPreviewCanvasRenderOptions(canvasContext, viewport, optionalContentConfig) {
+  const options = {
+    canvasContext,
+    viewport,
+    annotationMode: pdfPreviewCanvasAnnotationMode()
+  };
+  if (optionalContentConfig) options.optionalContentConfigPromise = Promise.resolve(optionalContentConfig);
+  return options;
+}
+
+async function pdfPreviewRenderXfaLayer(xfaHtml, viewport, frame) {
+  if (!xfaHtml || !window.pdfjsLib || !window.pdfjsLib.XfaLayer) return false;
+  try {
+    const layer = document.createElement('div');
+    layer.style.width = `${viewport.width}px`;
+    layer.style.height = `${viewport.height}px`;
+    layer.style.setProperty('--scale-factor', viewport.scale || 1);
+    frame.appendChild(layer);
+    window.pdfjsLib.XfaLayer.render({ div: layer, xfaHtml, viewport, intent: 'display' });
+    layer.classList.add('pdf-preview-xfa-layer');
+    return true;
+  } catch (e) {
+    console.warn('XFA 预览层渲染失败', e);
+    return false;
+  }
+}
+
+async function pdfPreviewRenderAnnotationLayer(page, doc, viewport, frame) {
+  if (!window.pdfjsLib || !window.pdfjsLib.AnnotationLayer || typeof page.getAnnotations !== 'function') return 0;
+  try {
+    const annotations = await page.getAnnotations({ intent: 'display' });
+    if (!annotations.length) return 0;
+    const layer = document.createElement('div');
+    layer.className = 'annotationLayer pdf-preview-annotation-layer';
+    layer.style.setProperty('--scale-factor', viewport.scale || 1);
+    frame.appendChild(layer);
+    const annotationLayer = new window.pdfjsLib.AnnotationLayer({ div: layer, page, viewport });
+    await annotationLayer.render({
+      annotations,
+      linkService: pdfPreviewLinkService(),
+      annotationStorage: doc.annotationStorage,
+      renderForms: true
+    });
+    return annotations.length;
+  } catch (e) {
+    console.warn('PDF 表单/注释层渲染失败', e);
+    return 0;
+  }
+}
+
+async function pdfRenderPageThumbnail(bytes, pageNumber, docCache, maxWidth = 110, maxHeight = 140) {
+  if (!window.pdfjsLib) return '';
+  const cache = docCache || new Map();
+  let doc = cache.get(bytes);
+  if (!doc) {
+    doc = await window.pdfjsLib.getDocument(pdfPreviewDocumentOptions(bytes)).promise;
+    cache.set(bytes, doc);
+  }
+  const page = await doc.getPage(pageNumber);
+  const optionalContentConfig = await pdfPreviewGetOptionalContentConfig(doc);
+  const base = page.getViewport({ scale: 1 });
+  const scale = Math.min(maxWidth / base.width, maxHeight / base.height);
+  const viewport = page.getViewport({ scale });
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.max(1, Math.ceil(viewport.width));
+  canvas.height = Math.max(1, Math.ceil(viewport.height));
+  const context = canvas.getContext('2d', { alpha: false });
+  context.fillStyle = '#fff';
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  await page.render(pdfPreviewCanvasRenderOptions(context, viewport, optionalContentConfig)).promise;
+  return canvas.toDataURL('image/jpeg', 0.88);
+}
+
+async function pdfRenderPageRaster(bytes, pageNumber, docCache, scale = 2) {
+  if (!window.pdfjsLib) throw new Error('PDF.js 未加载');
+  const cache = docCache || new Map();
+  let doc = cache.get(bytes);
+  if (!doc) {
+    doc = await window.pdfjsLib.getDocument(pdfPreviewDocumentOptions(bytes)).promise;
+    cache.set(bytes, doc);
+  }
+  const page = await doc.getPage(pageNumber);
+  const optionalContentConfig = await pdfPreviewGetOptionalContentConfig(doc);
+  if (doc.isPureXfa || page.isPureXfa) throw new Error('纯 XFA 页面不能直接栅格化');
+  const viewport = page.getViewport({ scale });
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.max(1, Math.ceil(viewport.width));
+  canvas.height = Math.max(1, Math.ceil(viewport.height));
+  const context = canvas.getContext('2d', { alpha: false });
+  context.fillStyle = '#fff';
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  await page.render(pdfPreviewCanvasRenderOptions(context, viewport, optionalContentConfig)).promise;
+  const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+  if (!blob) throw new Error('无法生成页面图片');
+  return {
+    bytes: new Uint8Array(await blob.arrayBuffer()),
+    width: viewport.width,
+    height: viewport.height
+  };
+}
+
 async function pdfShowCanvasPreview(bytes, titleText, key, pageNumbers) {
   const panel = document.getElementById('pdfPreviewPanel');
   if (currentPdfPreviewIndex === key && panel.style.display !== 'none') { closePdfPreview(); return; }
@@ -5131,7 +5354,8 @@ async function pdfShowCanvasPreview(bytes, titleText, key, pageNumbers) {
   }
 
   try {
-    const doc = await window.pdfjsLib.getDocument({ data: pdfBytesForPdfJs(bytes) }).promise;
+    const doc = await window.pdfjsLib.getDocument(pdfPreviewDocumentOptions(bytes)).promise;
+    const optionalContentConfig = await pdfPreviewGetOptionalContentConfig(doc);
     const total = doc.numPages;
     const pages = (pageNumbers && pageNumbers.length ? pageNumbers : Array.from({ length: total }, (_, n) => n + 1))
       .filter(n => n >= 1 && n <= total);
@@ -5148,20 +5372,40 @@ async function pdfShowCanvasPreview(bytes, titleText, key, pageNumbers) {
       const maxWidth = Math.max(260, body.clientWidth - 42);
       const scale = Math.min(1.8, maxWidth / base.width);
       const viewport = page.getViewport({ scale });
-      const canvas = document.createElement('canvas');
-      canvas.width = viewport.width;
-      canvas.height = viewport.height;
-      canvas.style.width = '100%';
-      canvas.style.height = 'auto';
-      canvas.style.display = 'block';
-      canvas.style.background = 'white';
-      canvas.style.borderRadius = '8px';
-      canvas.style.boxShadow = '0 2px 12px rgba(0,0,0,0.12)';
-      await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+      let xfaHtml = null;
+      try {
+        if (typeof page.getXfa === 'function') xfaHtml = await page.getXfa();
+      } catch (e) {
+        console.warn('读取 PDF XFA 内容失败', e);
+      }
+      const isPureXfa = !!xfaHtml && !!(doc.isPureXfa || page.isPureXfa);
+      const xfaViewport = xfaHtml && window.pdfjsLib.getXfaPageViewport
+        ? window.pdfjsLib.getXfaPageViewport(xfaHtml, { scale })
+        : null;
+      const displayViewport = isPureXfa && xfaViewport ? xfaViewport : viewport;
+      const frame = document.createElement('div');
+      frame.className = 'pdf-preview-page-frame';
+      frame.style.width = `${displayViewport.width}px`;
+      frame.style.height = `${displayViewport.height}px`;
+      frame.style.maxWidth = '100%';
+      frame.style.setProperty('--scale-factor', displayViewport.scale || scale);
+
+      let xfaRendered = false;
+      if (xfaHtml) xfaRendered = await pdfPreviewRenderXfaLayer(xfaHtml, xfaViewport || viewport, frame);
+
+      if (!isPureXfa || !xfaRendered) {
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.ceil(viewport.width);
+        canvas.height = Math.ceil(viewport.height);
+        await page.render(pdfPreviewCanvasRenderOptions(canvas.getContext('2d'), viewport, optionalContentConfig)).promise;
+        frame.insertBefore(canvas, frame.firstChild);
+      }
+
+      if (!isPureXfa) await pdfPreviewRenderAnnotationLayer(page, doc, viewport, frame);
       const box = document.createElement('div');
       box.style.marginBottom = '16px';
       box.innerHTML = `<div style="font-size:13px;font-weight:700;color:var(--gray-700);margin:0 0 8px;">第 ${pageNum} 页 / 共 ${total} 页</div>`;
-      box.appendChild(canvas);
+      box.appendChild(frame);
       wrap.appendChild(box);
     }
   } catch (e) {
@@ -5185,6 +5429,7 @@ async function pdfMerge() {
   try {
     // Step 1: Collect all source pages into a flat merged PDF
     const mergedPdf = await PDFLib.PDFDocument.create();
+    pdfMergeSourcePages = [];
     let totalPages = 0;
     for (let i = 0; i < pdfFiles.length; i++) {
       const f = pdfFiles[i];
@@ -5192,6 +5437,7 @@ async function pdfMerge() {
       const pageIndices = pdfGetSelectedPages(i);
       const copiedPages = await mergedPdf.copyPages(srcDoc, pageIndices);
       copiedPages.forEach(page => mergedPdf.addPage(page));
+      pageIndices.forEach(pageIndex => pdfMergeSourcePages.push({ data: f.data, pageNumber: pageIndex + 1 }));
       totalPages += copiedPages.length;
     }
     const mergedBytes = await mergedPdf.save();
@@ -5201,6 +5447,7 @@ async function pdfMerge() {
       const srcDoc = await PDFLib.PDFDocument.load(mergedBytes);
       const srcPages = srcDoc.getPages();
       const newDoc = await PDFLib.PDFDocument.create();
+      const nupRasterDocCache = new Map();
 
       const layoutMap = { 2: [2,1], 4: [2,2], 6: [3,2], 9: [3,3] };
       const [cols, rows] = layoutMap[pdfNup] || [2, 2];
@@ -5215,19 +5462,33 @@ async function pdfMerge() {
         const newPage = newDoc.addPage([pageW, pageH]);
         for (let j = 0; j < pdfNup && i + j < srcPages.length; j++) {
           const srcIdx = i + j;
-          const [embeddedPage] = await newDoc.embedPdf(srcDoc, [srcIdx]);
           const col = j % cols;
           const row = Math.floor(j / cols);
           const x = margin + col * (cellW + gap);
           const y = pageH - margin - (row + 1) * cellH - row * gap;
 
+          const source = pdfMergeSourcePages[srcIdx];
+          let embeddedImage = null;
+          if (source && window.pdfjsLib) {
+            try {
+              const raster = await pdfRenderPageRaster(source.data, source.pageNumber, nupRasterDocCache, 2);
+              embeddedImage = await newDoc.embedPng(raster.bytes);
+            } catch (e) {
+              console.warn('完整内容栅格化失败，改用 PDF 页面嵌入', e);
+            }
+          }
+          const embeddedPage = embeddedImage || await newDoc.embedPdf(srcDoc, [srcIdx]).then(pages => pages[0]);
           const srcW = embeddedPage.width, srcH = embeddedPage.height;
           const scale = Math.min(cellW / srcW, cellH / srcH);
           const drawW = srcW * scale, drawH = srcH * scale;
           const drawX = x + (cellW - drawW) / 2;
           const drawY = y + (cellH - drawH) / 2;
 
-          newPage.drawPage(embeddedPage, { x: drawX, y: drawY, width: drawW, height: drawH });
+          if (embeddedImage) {
+            newPage.drawImage(embeddedImage, { x: drawX, y: drawY, width: drawW, height: drawH });
+          } else {
+            newPage.drawPage(embeddedPage, { x: drawX, y: drawY, width: drawW, height: drawH });
+          }
         }
       }
       pdfMergedBytes = await newDoc.save();
@@ -5245,23 +5506,41 @@ async function pdfMerge() {
         `<div class="stat-item"><div class="stat-value">${(pdfMergedBytes.length / 1024).toFixed(0)}</div><div class="stat-label">文件大小(KB)</div></div>`;
     }
 
-    // 渲染合并后PDF预览缩略图
+    // 缩略图也走完整的 PDF.js 渲染路径；1页1个时直接读取原始页，避免
+    // pdf-lib 复制页面时丢掉发票的注释/表单外观流。
     try {
       pdfMergePreviewDoc = await PDFLib.PDFDocument.load(pdfMergedBytes);
       pdfMergePageBlobs = {};
       const thumbsDiv = document.getElementById('pdfMergePreviewThumbs');
       let thumbs = '';
+      const thumbnailDocCache = new Map();
       const pageCount = pdfMergePreviewDoc.getPageCount();
       for (let i = 0; i < pageCount; i++) {
-        const subDoc = await PDFLib.PDFDocument.create();
-        const [page] = await subDoc.copyPages(pdfMergePreviewDoc, [i]);
-        subDoc.addPage(page);
-        const bytes = await subDoc.save();
-        pdfMergePageBlobs[i] = new Blob([bytes], { type: 'application/pdf' });
-        const url = URL.createObjectURL(pdfMergePageBlobs[i]);
+        const source = pdfGetMergePreviewSource(i, pdfMergeSourcePages, pdfNup);
+        const thumbnailBytes = source ? source.bytes : pdfMergedBytes;
+        const thumbnailPageNumber = source ? source.pageNumbers[0] : i + 1;
+        let thumbnailUrl = '';
+        try {
+          thumbnailUrl = await pdfRenderPageThumbnail(thumbnailBytes, thumbnailPageNumber, thumbnailDocCache);
+        } catch (e) {
+          console.warn('PDF.js 缩略图渲染失败，改用浏览器预览', e);
+        }
+
+        let thumbnailContent = '';
+        if (thumbnailUrl) {
+          thumbnailContent = `<img src="${thumbnailUrl}" alt="第 ${i + 1} 页预览" style="display:block;width:100%;height:100%;object-fit:contain;background:#fff;">`;
+        } else {
+          const subDoc = await PDFLib.PDFDocument.create();
+          const [page] = await subDoc.copyPages(pdfMergePreviewDoc, [i]);
+          subDoc.addPage(page);
+          const bytes = await subDoc.save();
+          pdfMergePageBlobs[i] = new Blob([bytes], { type: 'application/pdf' });
+          const url = URL.createObjectURL(pdfMergePageBlobs[i]);
+          thumbnailContent = `<iframe src="${url}#toolbar=0&navpanes=0" style="position:absolute;top:0;left:0;width:340px;height:490px;border:none;pointer-events:none;transform:scale(0.324);transform-origin:top left;z-index:1;"></iframe>`;
+        }
         thumbs += `<div style="width:110px;text-align:center;flex-shrink:0;">
           <div style="width:110px;height:140px;border:1px solid var(--gray-200);border-radius:6px;overflow:hidden;position:relative;background:var(--gray-100);line-height:0;">
-            <iframe src="${url}#toolbar=0&navpanes=0" style="position:absolute;top:0;left:0;width:340px;height:490px;border:none;pointer-events:none;transform:scale(0.324);transform-origin:top left;z-index:1;"></iframe>
+            ${thumbnailContent}
             <button class="sheet-preview-btn" onclick="pdfMergePreviewPage(${i})" title="悬浮预览" style="position:absolute;top:3px;right:3px;background:rgba(255,255,255,0.96);border:1px solid var(--gray-300);width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-size:14px;z-index:2;padding:0;box-shadow:0 2px 8px rgba(0,0,0,0.15);">👁️</button>
           </div>
           <div style="font-size:11px;color:var(--gray-500);margin-top:4px;">第 ${i + 1} 页</div>
@@ -5295,11 +5574,18 @@ function pdfDownload() {
 async function pdfMergePreviewPage(i) {
   if (!pdfMergePreviewDoc) return;
   const key = 'pdf-merge-' + i;
-  pdfShowCanvasPreview(pdfMergedBytes, `📄 合并结果：第 ${i + 1} 页`, key, [i + 1]);
+  const source = pdfGetMergePreviewSource(i, pdfMergeSourcePages, pdfNup);
+  pdfShowCanvasPreview(
+    source ? source.bytes : pdfMergedBytes,
+    `📄 合并结果：第 ${i + 1} 页`,
+    key,
+    source ? source.pageNumbers : [i + 1]
+  );
 }
 
 function pdfReset() {
-  pdfFiles = []; pdfMergedBytes = null; pdfMergePreviewDoc = null; pdfMergePageBlobs = {}; pdfListExpanded = false; pdfNup = 1;
+  if(typeof closePdfPreview==='function') closePdfPreview();
+  pdfFiles = []; pdfMergedBytes = null; pdfMergePreviewDoc = null; pdfMergePageBlobs = {}; pdfMergeSourcePages = []; pdfListExpanded = false; pdfNup = 1;
   document.querySelectorAll('#nupOptions .nup-option').forEach(btn => btn.classList.toggle('active', parseInt(btn.dataset.nup) === 1));
   document.getElementById('pdfFileList').innerHTML = '';
   document.getElementById('pdfListCard').style.display = 'none';
@@ -5756,7 +6042,7 @@ function imagePdfReset(silent){
 // ==========================================
 // PDF SPLIT TOOL
 // ==========================================
-let pdfSplitFile = null, pdfSplitDoc = null, pdfSplitJsDoc = null, pdfSplitPages = []; // { pageNum, selected, previewUrl }
+let pdfSplitFile = null, pdfSplitDoc = null, pdfSplitJsDoc = null, pdfSplitSourceBytes = null, pdfSplitPages = []; // { pageNum, selected, previewUrl }
 let pdfSplitResults=[];
 let pdfSplitRenameHistory=[];
 let pdfSplitRenamePanelOpen=false;
@@ -6032,6 +6318,7 @@ async function pdfSplitLoad(file){
     const buf=await file.arrayBuffer();
     const bufForPdfLib=buf.slice(0);
     const bufForPdfJs=buf.slice(0);
+    pdfSplitSourceBytes=buf.slice(0);
     pdfSplitDoc=await PDFLib.PDFDocument.load(bufForPdfLib,{ignoreEncryption:true});
     if(!window.pdfjsLib){ showToast('PDF.js 加载失败，无法预览/回单拆分','error'); return; }
     pdfSplitJsDoc=await window.pdfjsLib.getDocument({data:bufForPdfJs}).promise;
@@ -7616,6 +7903,7 @@ let pdfSplitThumbRunId=0;
 async function pdfSplitGeneratePageThumbnails(){
   if(!pdfSplitJsDoc||!pdfSplitPages.length)return;
   const runId=++pdfSplitThumbRunId;
+  const optionalContentConfig=await pdfPreviewGetOptionalContentConfig(pdfSplitJsDoc);
   for(let i=0;i<pdfSplitPages.length;i++){
     if(runId!==pdfSplitThumbRunId)return;
     try{
@@ -7629,7 +7917,7 @@ async function pdfSplitGeneratePageThumbnails(){
       const ctx=canvas.getContext('2d',{alpha:false});
       ctx.fillStyle='#fff';
       ctx.fillRect(0,0,canvas.width,canvas.height);
-      await page.render({canvasContext:ctx,viewport}).promise;
+      await page.render(pdfPreviewCanvasRenderOptions(ctx,viewport,optionalContentConfig)).promise;
       pdfSplitPages[i].thumbUrl=canvas.toDataURL('image/jpeg',0.78);
       pdfSplitRenderPages();
     }catch(e){
@@ -7640,6 +7928,9 @@ async function pdfSplitGeneratePageThumbnails(){
 let currentPdfPreviewIndex=null;
 async function pdfSplitPagePreview(i){
   if(!pdfSplitDoc)return;
+  if(pdfSplitSourceBytes){
+    return pdfShowCanvasPreview(pdfSplitSourceBytes, `📄 第 ${i+1} 页预览`, `pdf-split-page-${i}`, [i+1]);
+  }
   const panel=document.getElementById('pdfPreviewPanel');
   if(currentPdfPreviewIndex===i && panel.style.display!=='none'){ closePdfPreview(); return; }
   let blob=pdfSplitPageBlobs[i];
@@ -7664,11 +7955,14 @@ function closePdfPreview(){ document.getElementById('pdfPreviewPanel').style.dis
 async function pdfSplitResultPreview(i){
   if(!pdfSplitResults[i])return;
   const panel=document.getElementById('pdfPreviewPanel');
-  if(currentPdfPreviewIndex==='result-'+i && panel.style.display!=='none'){ closePdfPreview(); return; }
+  const key=`pdf-split-result-${i}`;
+  if(currentPdfPreviewIndex===key && panel.style.display!=='none'){ closePdfPreview(); return; }
   const body=document.getElementById('pdfPreviewPanelBody');
   const title=document.getElementById('pdfPreviewPanelTitle');
   if(pdfSplitResults[i].imgUrl){
     body.innerHTML=`<div style="width:100%;height:100%;overflow:auto;background:#252525;text-align:center;"><img src="${pdfSplitResults[i].imgUrl}" style="max-width:100%;height:auto;background:#fff;display:inline-block;"></div>`;
+  }else if(pdfSplitSourceBytes && pdfSplitResults[i].pageNum){
+    return pdfShowCanvasPreview(pdfSplitSourceBytes, `📄 第 ${pdfSplitResults[i].pageNum} 页预览`, key, [pdfSplitResults[i].pageNum]);
   }else{
     const blob=new Blob([pdfSplitResults[i].bytes],{type:'application/pdf'});
     const url=URL.createObjectURL(blob);
@@ -7676,7 +7970,7 @@ async function pdfSplitResultPreview(i){
   }
   title.textContent=`📄 第 ${pdfSplitResults[i].pageNum} 页预览`;
   panel.style.display='';
-  currentPdfPreviewIndex='result-'+i;
+  currentPdfPreviewIndex=key;
 }
 
 let dragPdfPanel=null, dragPdfX=0, dragPdfY=0;
@@ -8569,7 +8863,7 @@ function pdfSplitReset(){
   pdfSplitTemplateReady=false;
   pdfSplitLastMode=null;
   pdfSplitSetModeInputsDisabled(false);
-  pdfSplitFile=null; pdfSplitDoc=null; pdfSplitJsDoc=null; pdfSplitPages=[]; pdfSplitResults=[]; pdfSplitPageBlobs={};
+  pdfSplitFile=null; pdfSplitDoc=null; pdfSplitJsDoc=null; pdfSplitSourceBytes=null; pdfSplitPages=[]; pdfSplitResults=[]; pdfSplitPageBlobs={};
   pdfSplitResetRenameControls();
   pdfSplitResetResultFilter();
   __tplTemplateRects=null; __tplRects=[];
