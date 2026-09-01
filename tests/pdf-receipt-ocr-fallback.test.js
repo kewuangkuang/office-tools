@@ -20,7 +20,7 @@ function loadPureHelpers(html) {
   const snippets = html.slice(start, end);
   const context = {};
   vm.createContext(context);
-  vm.runInContext(`${snippets}\nthis.api={pdfSplitRequiredReceiptFields,pdfSplitMissingReceiptFields,pdfSplitMergeMissingReceiptFields,pdfSplitPreferCoordinatePartyNames};`, context);
+  vm.runInContext(`${snippets}\nthis.api={pdfSplitRequiredReceiptFields,pdfSplitMissingReceiptFields,pdfSplitMergeMissingReceiptFields,pdfSplitPreferCoordinatePartyNames,pdfSplitReceiptOcrNeeds:typeof pdfSplitReceiptOcrNeeds==='function'?pdfSplitReceiptOcrNeeds:null};`, context);
   return context.api;
 }
 
@@ -93,6 +93,31 @@ function loadReceiptCropHelpers(html) {
   const context = {};
   vm.createContext(context);
   vm.runInContext(`${html.slice(start, end)}\nthis.api={pdfSplitGroupReceiptBoundaryRows,pdfSplitBuildReceiptCropsFromBoundaries,pdfSplitBuildReceiptCropsFromFrameRows};`, context);
+  return context.api;
+}
+
+function loadReceiptImageDetector(html, overrides = {}) {
+  const cropStart = html.indexOf('function pdfSplitGroupReceiptBoundaryRows(');
+  const start = html.indexOf('function pdfSplitDetectReceiptGapsFromImage(');
+  const end = html.indexOf('\nfunction pdfSplitShouldKeepSingleScanReceipt(', start);
+  const contentStart = html.indexOf('function pdfSplitFindContentBox(');
+  const contentEnd = html.indexOf('\nfunction pdfSplitIsBlankReceiptCanvas(', contentStart);
+  assert.ok(cropStart >= 0 && start > cropStart && end > start, 'receipt image detector should exist');
+  assert.ok(contentStart >= 0 && contentEnd > contentStart, 'receipt content-box helper should exist');
+  const snippets = `${html.slice(cropStart, start)}\n${html.slice(start, end)}\n${html.slice(contentStart, contentEnd)}`;
+  const context = { ...overrides };
+  vm.createContext(context);
+  vm.runInContext(`${snippets}\nthis.api={pdfSplitDetectReceiptGapsFromImage};`, context);
+  return context.api;
+}
+
+function loadReceiptContentBox(html, overrides = {}) {
+  const start = html.indexOf('function pdfSplitFindContentBox(');
+  const end = html.indexOf('\nfunction pdfSplitIsBlankReceiptCanvas(', start);
+  assert.ok(start >= 0 && end > start, 'receipt content-box helper should exist');
+  const context = { ...overrides };
+  vm.createContext(context);
+  vm.runInContext(`${html.slice(start, end)}\nthis.api={pdfSplitFindContentBox};`, context);
   return context.api;
 }
 
@@ -214,6 +239,15 @@ test('missing fields and merge only fill empty primary values', () => {
   assert.equal(recovered.payee, '收款方公司');
 });
 
+test('receipt OCR need follows the fields used by the selected filename', () => {
+  const { pdfSplitReceiptOcrNeeds: needs } = loadPureHelpers(source());
+  assert.equal(typeof needs, 'function', 'receipt OCR need helper should exist');
+  if (typeof needs !== 'function') return;
+  assert.equal(needs({ amount: '12.34元', payer: '', payee: '' }, 'amount', ''), false);
+  assert.equal(needs({ amount: '12.34元', payer: '', payee: '' }, 'payee_amount', ''), true);
+  assert.equal(needs({ amount: '', payer: '', payee: '' }, 'custom', '{序号}'), false);
+});
+
 test('left-right OCR coordinates override a low-confidence merged party line', () => {
   const { pdfSplitPreferCoordinatePartyNames: prefer } = loadPureHelpers(source());
   const fields = prefer(
@@ -231,8 +265,8 @@ test('canonical entry uses text fields, then browser PaddleOCR, then Tesseract',
     assert.match(html, /async function pdfSplitRunPaddleOcr\s*\(/, `${file} PaddleOCR adapter`);
     assert.match(html, /function pdfSplitRunTesseractOcr\s*\(/, `${file} Tesseract adapter`);
     const coordinator = html.slice(html.indexOf('async function pdfSplitOcrReceiptCanvas'), html.indexOf('function pdfSplitBuildReceiptBaseName'));
-    const paddleCall = coordinator.indexOf('pdfSplitRunPaddleOcr(canvas)');
-    const tesseractCall = coordinator.indexOf('pdfSplitRunTesseractOcr(canvas)');
+    const paddleCall = coordinator.indexOf('pdfSplitRunPaddleOcr(canvas');
+    const tesseractCall = coordinator.indexOf('pdfSplitRunTesseractOcr(canvas');
     assert.ok(paddleCall >= 0, `${file} should call PaddleOCR when text fields are missing`);
     assert.ok(tesseractCall > paddleCall, `${file} should keep Tesseract after PaddleOCR`);
     assert.match(coordinator, /if\(stillNeedsOcr\)/, `${file} only reaches Tesseract when PaddleOCR leaves fields missing`);
@@ -432,6 +466,84 @@ test('automatic receipt splitting supports different receipt counts on each page
   assert.equal(framed.length, 3, 'paired frame lines should produce three receipt crops');
 });
 
+test('automatic image detection does not read one scanline at a time', () => {
+  const calls = [];
+  const makeContext = () => ({
+    fillRect() {},
+    drawImage() {},
+    getImageData(_x, _y, width, height) {
+      calls.push({ width, height });
+      return { data: new Uint8ClampedArray(width * height * 4).fill(255) };
+    }
+  });
+  const { pdfSplitDetectReceiptGapsFromImage: detect } = loadReceiptImageDetector(source(), {
+    document: { createElement: () => ({ getContext: makeContext }) }
+  });
+  const canvas = {
+    width: 1400,
+    height: 2800,
+    getContext: makeContext
+  };
+
+  detect(canvas, canvas.width, canvas.height, 2);
+
+  assert.ok(calls.length <= 4, `image analysis should use a small number of pixel reads, got ${calls.length}`);
+  assert.ok(calls.some(call => call.width < canvas.width && call.height < canvas.height), 'image analysis should use a downsampled surface');
+});
+
+test('automatic content-box analysis uses a downsampled surface', () => {
+  const calls = [];
+  const makeContext = () => ({
+    fillRect() {},
+    drawImage() {},
+    getImageData(_x, _y, width, height) {
+      calls.push({ width, height });
+      return { data: new Uint8ClampedArray(width * height * 4).fill(255) };
+    }
+  });
+  const { pdfSplitFindContentBox: findContentBox } = loadReceiptContentBox(source(), {
+    document: { createElement: () => ({ getContext: makeContext }) }
+  });
+  const canvas = {
+    width: 1600,
+    height: 1200,
+    getContext: makeContext
+  };
+
+  findContentBox(canvas);
+
+  assert.ok(calls.length <= 2, `content-box analysis should use a small number of pixel reads, got ${calls.length}`);
+  assert.ok(calls.some(call => call.width < canvas.width && call.height < canvas.height), 'content-box analysis should use a downsampled surface');
+});
+
+test('compact single-receipt scans skip gap analysis before it starts', () => {
+  const html = source();
+  const executeStart = html.indexOf('async function pdfSplitExecute');
+  const executeEnd = html.indexOf('\nfunction pdfSplitCurrentExportFormat', executeStart);
+  const execute = html.slice(executeStart, executeEnd);
+  const singleReceiptGuard = execute.indexOf('pdfSplitShouldKeepSingleScanReceipt(canvas,manualCount)');
+  const gapDetector = execute.indexOf('pdfSplitDetectReceiptGapsFromImage(canvas,canvas.width,canvas.height,manualCount)');
+  assert.ok(singleReceiptGuard >= 0 && gapDetector >= 0, 'scan receipt guards should exist');
+  assert.ok(singleReceiptGuard < gapDetector, 'single compact receipts should bypass full gap analysis');
+});
+
+test('template receipt mode exposes configurable combination naming', () => {
+  const html = source();
+  const namingStart = html.indexOf('id="pdfSplitReceiptNamingOptions"');
+  const namingEnd = html.indexOf('\n      </div>', namingStart);
+  assert.ok(namingStart >= 0 && namingEnd > namingStart, 'receipt naming controls should have a shared template');
+  const naming = html.slice(namingStart, namingEnd);
+  assert.match(naming, /id="pdfSplitReceiptNameMode"/, 'shared naming controls should include the naming mode');
+  assert.match(naming, /<option value="payee_amount"/, 'template mode should offer payee plus amount');
+  assert.match(naming, /id="pdfSplitReceiptNameTemplate"/, 'template mode should offer custom field combinations');
+  assert.equal((html.match(/id="pdfSplitReceiptNameMode"/g) || []).length, 1, 'naming mode should have one shared control');
+  const updateModeStart = html.indexOf('function pdfSplitUpdateMode');
+  const updateModeEnd = html.indexOf('\nfunction pdfSplitUpdateReceiptUI', updateModeStart);
+  const updateMode = html.slice(updateModeStart, updateModeEnd);
+  assert.match(updateMode, /pdfSplitReceiptNamingOptions/, 'mode changes should update shared naming controls');
+  assert.match(updateMode, /mode==='receipt'\|\|mode==='template'/, 'naming controls should be available in both receipt modes');
+});
+
 test('receipt mode defaults to two receipts per page and exposes progress/timeout handling', () => {
   const html = source();
   assert.doesNotMatch(html, /<option value="auto"[^>]*>自动识别每页数量（推荐）<\/option>/, 'automatic per-page count should be removed from the receipt count menu');
@@ -468,6 +580,15 @@ test('receipt UI recommends template splitting and reuses one OCR pass per image
   assert.match(execute, /templateOcrEnabled\s*\?\s*await pdfSplitOcrReceiptCanvas/, 'template mode should recognize when OCR is enabled');
   const reset = html.slice(html.indexOf('function pdfSplitReset'), html.indexOf('\nfunction pdfSplitClearUpload', html.indexOf('function pdfSplitReset')));
   assert.match(reset, /getElementById\('pdfSplitTemplateOcr'\)\.checked=true/, 'reset should restore the recognition default');
+});
+
+test('receipt OCR forwards timeout cancellation to both OCR engines', () => {
+  const html = source();
+  const coordinator = html.slice(html.indexOf('async function pdfSplitOcrReceiptCanvas'), html.indexOf('function pdfSplitBuildReceiptBaseName'));
+  assert.match(coordinator, /pdfSplitWithTimeout\(\(registerCancel\)=>pdfSplitRunPaddleOcr\(canvas,registerCancel\)/, 'PaddleOCR should receive the timeout cancellation callback');
+  assert.match(coordinator, /pdfSplitWithTimeout\(\(registerCancel\)=>pdfSplitRunTesseractOcr\(canvas,undefined,registerCancel\)/, 'Tesseract should receive the timeout cancellation callback');
+  assert.match(coordinator, /pdfSplitRunTesseractOcr\(focusedCanvas,undefined,registerCancel\)/, 'focused Tesseract OCR should share cancellation');
+  assert.match(coordinator, /pdfSplitRunTesseractOcr\(fixedCanvases\[key\],\{tessedit_pageseg_mode:'7',preserve_interword_spaces:'1'\},registerCancel\)/, 'fixed-cell Tesseract OCR should share cancellation');
 });
 
 test('template mode highlights the receipt count setting', () => {
