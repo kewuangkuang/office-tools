@@ -3533,12 +3533,30 @@ function pdfSplitReceiptFixedFieldBoxes(canvasW,canvasH,tableRows){
 }
 function pdfSplitDetectReceiptTableRows(canvas){
   try{
-    const w=canvas.width,h=Math.min(canvas.height,Math.round(canvas.width*0.48));
-    if(w<100||h<80)return [];
-    const ctx=canvas.getContext('2d',{willReadFrequently:true});
+    const sourceW=canvas.width,sourceH=Math.min(canvas.height,Math.round(canvas.width*0.48));
+    if(sourceW<100||sourceH<80)return [];
+    // 表格线检测只需要判断横向深色比例；缩小分析图，避免兜底分支读取整块高清画布。
+    const maxAnalysisSide=900;
+    const analysisScale=Math.min(1,maxAnalysisSide/Math.max(sourceW,sourceH));
+    const requestedW=Math.max(1,Math.round(sourceW*analysisScale));
+    const requestedH=Math.max(1,Math.round(sourceH*analysisScale));
+    let analysisCanvas=canvas;
+    let w=sourceW,h=sourceH;
+    if((requestedW<sourceW||requestedH<sourceH)&&typeof document!=='undefined'&&document.createElement){
+      analysisCanvas=document.createElement('canvas');
+      analysisCanvas.width=requestedW;
+      analysisCanvas.height=requestedH;
+      const resizeCtx=analysisCanvas.getContext('2d',{alpha:false});
+      resizeCtx.fillStyle='#fff';
+      resizeCtx.fillRect(0,0,requestedW,requestedH);
+      resizeCtx.drawImage(canvas,0,0,sourceW,sourceH,0,0,requestedW,requestedH);
+      w=requestedW;
+      h=requestedH;
+    }
+    const ctx=analysisCanvas.getContext('2d',{willReadFrequently:true});
     const data=ctx.getImageData(0,0,w,h).data;
     const x1=Math.round(w*0.035),x2=Math.round(w*0.88);
-    const xStep=Math.max(2,Math.round(w/500));
+    const xStep=Math.max(1,Math.round(w/500));
     const darkRows=[];
     for(let y=0;y<h;y++){
       let dark=0,total=0;
@@ -3568,7 +3586,9 @@ function pdfSplitDetectReceiptTableRows(canvas){
       }
       if(run.length>best.length)best=run;
     }
-    return best.length>=6?best:[];
+    if(best.length<6)return [];
+    const sourceScaleY=sourceH/h;
+    return best.map(y=>Math.round(y*sourceScaleY));
   }catch(e){
     console.warn('农行回单表格线检测失败',e);
     return [];
@@ -6914,20 +6934,35 @@ function pdfSplitFindContentBox(canvas){
   };
 }
 function pdfSplitIsBlankReceiptCanvas(canvas){
-  const ctx=canvas.getContext('2d',{willReadFrequently:true});
   const w=canvas.width,h=canvas.height;
   if(w<10||h<10) return true;
-  const img=ctx.getImageData(0,0,w,h).data;
+  // 空白判断只需要估算像素比例；使用小分析图，避免每张回单都读取整张高清裁剪图。
+  const maxAnalysisSide=720;
+  const analysisScale=Math.min(1,maxAnalysisSide/Math.max(w,h));
+  const analysisW=Math.max(1,Math.round(w*analysisScale));
+  const analysisH=Math.max(1,Math.round(h*analysisScale));
+  let analysisCanvas=canvas;
+  if((analysisW<w||analysisH<h)&&typeof document!=='undefined'&&document.createElement){
+    analysisCanvas=document.createElement('canvas');
+    analysisCanvas.width=analysisW;
+    analysisCanvas.height=analysisH;
+    const resizeCtx=analysisCanvas.getContext('2d',{alpha:false});
+    resizeCtx.fillStyle='#fff';
+    resizeCtx.fillRect(0,0,analysisW,analysisH);
+    resizeCtx.drawImage(canvas,0,0,w,h,0,0,analysisW,analysisH);
+  }
+  const ctx=analysisCanvas.getContext('2d',{willReadFrequently:true});
+  const img=ctx.getImageData(0,0,analysisW,analysisH).data;
   let darkPixels=0;
-  const step=Math.max(1,Math.floor(Math.min(w,h)/300));
-  for(let y=0;y<h;y+=step){
-    for(let x=0;x<w;x+=step){
-      const i=(y*w+x)*4;
+  const step=Math.max(1,Math.floor(Math.min(analysisW,analysisH)/300));
+  for(let y=0;y<analysisH;y+=step){
+    for(let x=0;x<analysisW;x+=step){
+      const i=(y*analysisW+x)*4;
       const gray=(img[i]+img[i+1]+img[i+2])/3;
       if(gray<240) darkPixels++;
     }
   }
-  const total=Math.ceil(h/step)*Math.ceil(w/step);
+  const total=Math.ceil(analysisH/step)*Math.ceil(analysisW/step);
   return darkPixels/total<0.003;
 }
 function pdfSplitLinesFromRegion(items, box){
@@ -7599,6 +7634,37 @@ function pdfSplitMissingReceiptFields(fields,mode,template){
 function pdfSplitReceiptOcrNeeds(fields,mode,template){
   return pdfSplitMissingReceiptFields(fields,mode,template).length>0;
 }
+function pdfSplitReceiptFieldsFromText(lines,layoutFields){
+  const safeLines=Array.isArray(lines)?lines:[];
+  const guessed=pdfSplitExtractReceiptFields(safeLines);
+  return {
+    amount:layoutFields?.amount||guessed.amount||'',
+    amountWarning:layoutFields?.amountWarning||guessed.amountWarning||'',
+    amountSource:layoutFields?.amountSource||guessed.amountSource||'',
+    payer:layoutFields?.payer||guessed.payer||'',
+    payee:layoutFields?.payee||guessed.payee||'',
+    date:layoutFields?.date||guessed.date||'',
+    serial:layoutFields?.serial||guessed.serial||'',
+    accounts:layoutFields?.accounts||guessed.accounts||[],
+    rawText:[layoutFields?.rawText,guessed.rawText].filter(Boolean).join('\n')
+  };
+}
+function pdfSplitReceiptFieldsForOcrSnapshot(lines,layoutFields,supplemental,canvasW,canvasH){
+  let fields=pdfSplitReceiptFieldsFromText(lines,layoutFields);
+  const extraLines=Array.isArray(supplemental?.lines)?supplemental.lines:[];
+  if(extraLines.length){
+    const mergedLines=(Array.isArray(lines)?lines:[]).concat(extraLines);
+    fields=pdfSplitMergeMissingReceiptFields(fields,pdfSplitExtractReceiptFields(mergedLines));
+    if(pdfSplitReceiptFieldIsMissing(fields.payer)||pdfSplitReceiptFieldIsMissing(fields.payee)){
+      const names=pdfSplitExtractNamesFromOcrText(extraLines);
+      fields=pdfSplitMergeMissingReceiptFields(fields,{payer:names[0]||'',payee:names[1]||''});
+    }
+  }
+  if(Array.isArray(supplemental?.words)&&supplemental.words.length){
+    fields=pdfSplitPreferCoordinatePartyNames(fields,pdfSplitExtractPartyNamesFromOcrWords(supplemental.words,canvasW,canvasH));
+  }
+  return fields;
+}
 function pdfSplitMergeMissingReceiptFields(primary,supplement){
   const out=Object.assign({},primary||{});
   Object.keys(supplement||{}).forEach(key=>{
@@ -7631,23 +7697,12 @@ function pdfSplitPreferFixedReceiptFields(fields,fixedFields,trustedLayout){
   }
   return out;
 }
-async function pdfSplitOcrReceiptCanvas(canvas, fallbackLines, layoutFields, sharedPaddleOcr){
+async function pdfSplitOcrReceiptCanvas(canvas, fallbackLines, layoutFields, sharedPaddleOcr, sharedTesseractOcr){
   let lines=fallbackLines||[];
   const partyOcrTrace=[];
   const nameMode=document.getElementById('pdfSplitReceiptNameMode')?.value||'amount';
   const nameTemplate=document.getElementById('pdfSplitReceiptNameTemplate')?.value||'{收款人}{金额}';
-  const guessed=pdfSplitExtractReceiptFields(lines);
-  let fields={
-    amount: layoutFields?.amount || guessed.amount || '',
-    amountWarning: layoutFields?.amountWarning || guessed.amountWarning || '',
-    amountSource: layoutFields?.amountSource || guessed.amountSource || '',
-    payer: layoutFields?.payer || guessed.payer || '',
-    payee: layoutFields?.payee || guessed.payee || '',
-    date: layoutFields?.date || guessed.date || '',
-    serial: layoutFields?.serial || guessed.serial || '',
-    accounts: layoutFields?.accounts || guessed.accounts || [],
-    rawText: [layoutFields?.rawText, guessed.rawText].filter(Boolean).join('\n')
-  };
+  let fields=pdfSplitReceiptFieldsFromText(lines,layoutFields);
   fields.amountWarning=pdfSplitCleanAmountWarning(fields.amount,fields.amountWarning);
   const needsOcr=pdfSplitReceiptOcrNeeds(fields,nameMode,nameTemplate);
   if(needsOcr){
@@ -7681,7 +7736,9 @@ async function pdfSplitOcrReceiptCanvas(canvas, fallbackLines, layoutFields, sha
     const stillNeedsOcr=pdfSplitReceiptOcrNeeds(fields,nameMode,nameTemplate);
     if(stillNeedsOcr){
       try{
-        const tess=await pdfSplitWithTimeout((registerCancel)=>pdfSplitRunTesseractOcr(canvas,undefined,registerCancel),PDF_SPLIT_OCR_TIMEOUT_MS,'Tesseract 超时');
+        const tess=sharedTesseractOcr!==undefined
+          ? (sharedTesseractOcr||{lines:[],words:[],blocks:[],raw:null,error:'页面 Tesseract 未返回文字',source:'tesseract'})
+          : await pdfSplitWithTimeout((registerCancel)=>pdfSplitRunTesseractOcr(canvas,undefined,registerCancel),PDF_SPLIT_OCR_TIMEOUT_MS,'Tesseract 超时');
         if(tess.lines?.length){
           lines=lines.concat(tess.lines);
           const ocrFields=pdfSplitExtractReceiptFields(lines);
@@ -8102,6 +8159,8 @@ async function pdfSplitExecute(){
     // ===== 回单/模板模式：渲染页面→裁剪→生成单张PDF =====
     const isTemplateMode=mode==='template';
     const templateOcrEnabled=!isTemplateMode||!!document.getElementById('pdfSplitTemplateOcr')?.checked;
+    const receiptNameMode=document.getElementById('pdfSplitReceiptNameMode')?.value||'amount';
+    const receiptNameTemplate=document.getElementById('pdfSplitReceiptNameTemplate')?.value||'{收款人}{金额}';
     const countSel=isTemplateMode?null:document.getElementById('pdfSplitReceiptCount');
     const manualCount=isTemplateMode
       ? parseInt(document.getElementById('pdfSplitTemplateCount').value)||2
@@ -8147,10 +8206,21 @@ async function pdfSplitExecute(){
           }
         }
       }
+      // 文字层可能存在但字段不完整（例如金额被拆成多个文字片段）。
+      // 这种页面也要提升到“整页 OCR 一次”，否则每张回单都会重复识别整张裁剪图。
+      const pageTextFieldsNeedOcr=templateOcrEnabled&&pageTextItems.length>0&&receiptCrops.some(crop=>{
+        const cropLines=pdfSplitTextItemsToLines(textContent,vp,crop);
+        const cropItems=pdfSplitTextItemsInCrop(textContent,vp,crop);
+        const layoutFields=pdfSplitExtractReceiptFieldsByLayout(cropItems,crop.w,crop.h);
+        const fields=pdfSplitReceiptFieldsFromText(cropLines,layoutFields);
+        return pdfSplitReceiptOcrNeeds(fields,receiptNameMode,receiptNameTemplate);
+      });
+      const pageOcrNeeded=templateOcrEnabled&&receiptCrops.length&&(pageTextItems.length===0||pageTextFieldsNeedOcr);
       // 图片型 PDF 不要为每张回单重复跑一次 PaddleOCR：整页识别一次后，
       // 按文字框坐标分配给各个回单，能显著减少模型推理次数。
       let pagePaddleOcr;
-      if(templateOcrEnabled&&pageTextItems.length===0&&receiptCrops.length){
+      let pageTesseractOcr;
+      if(pageOcrNeeded){
         setProgress(`正在识别第 ${pageOrdinal}/${pageNums.length} 页文字…`,pageOrdinal-0.15,pageNums.length);
         try{
           pagePaddleOcr=await pdfSplitWithTimeout((registerCancel)=>pdfSplitRunPaddleOcr(canvas,registerCancel),PDF_SPLIT_OCR_TIMEOUT_MS,'本页 PaddleOCR 超时');
@@ -8158,6 +8228,23 @@ async function pdfSplitExecute(){
           pagePaddleOcr={lines:[],words:[],blocks:[],raw:null,ok:false,error:e?.message||'本页 PaddleOCR 超时',source:'paddle'};
         }
         pdfSplitThrowIfCancelled(runId);
+        const pagePaddleNeedsTesseract=receiptCrops.some(crop=>{
+          const cropLines=pdfSplitTextItemsToLines(textContent,vp,crop);
+          const cropItems=pdfSplitTextItemsInCrop(textContent,vp,crop);
+          const layoutFields=pdfSplitExtractReceiptFieldsByLayout(cropItems,crop.w,crop.h);
+          const cropPaddleOcr=pdfSplitPaddleResultForCrop(pagePaddleOcr,{x:crop.x,y:crop.y,w:crop.w,h:crop.h});
+          const fields=pdfSplitReceiptFieldsForOcrSnapshot(cropLines,layoutFields,cropPaddleOcr,crop.w,crop.h);
+          return pdfSplitReceiptOcrNeeds(fields,receiptNameMode,receiptNameTemplate);
+        });
+        if(pagePaddleNeedsTesseract){
+          setProgress(`正在备用识别第 ${pageOrdinal}/${pageNums.length} 页文字…`,pageOrdinal-0.10,pageNums.length);
+          try{
+            pageTesseractOcr=await pdfSplitWithTimeout((registerCancel)=>pdfSplitRunTesseractOcr(canvas,undefined,registerCancel),PDF_SPLIT_OCR_TIMEOUT_MS,'本页 Tesseract 超时');
+          }catch(e){
+            pageTesseractOcr={lines:[],words:[],blocks:[],raw:null,error:e?.message||'本页 Tesseract 超时',source:'tesseract'};
+          }
+          pdfSplitThrowIfCancelled(runId);
+        }
       }
       setProgress(`正在处理第 ${pageOrdinal}/${pageNums.length} 页 · 本页检测到 ${receiptCrops.length} 张回单`,pageOrdinal-0.25,pageNums.length);
 
@@ -8213,16 +8300,19 @@ async function pdfSplitExecute(){
         const cropPaddleOcr=pagePaddleOcr===undefined
           ? undefined
           : pdfSplitPaddleResultForCrop(pagePaddleOcr,{x:sx,y:sy,w:sw,h:sh});
+        const cropTesseractOcr=pageTesseractOcr===undefined
+          ? undefined
+          : pdfSplitPaddleResultForCrop(pageTesseractOcr,{x:sx,y:sy,w:sw,h:sh});
         // 传原始裁切图给 OCR；Tesseract 内部做温和预处理（灰度+轻度增强），保留完整版面信息
         const fields=templateOcrEnabled
-          ? await pdfSplitOcrReceiptCanvas(cc,cropLines,layoutFields,cropPaddleOcr)
+          ? await pdfSplitOcrReceiptCanvas(cc,cropLines,layoutFields,cropPaddleOcr,cropTesseractOcr)
           : null;
         pdfSplitThrowIfCancelled(runId);
 
         // 导出用标题/分块裁出来的原图；宁可多留白，也不能截漏财务单据。
         const exportCanvas=cc;
-        const imgData=exportCanvas.toDataURL('image/jpeg',0.9);
-        const imgBytes=await fetch(imgData).then(r=>r.arrayBuffer());
+        setProgress(`正在生成第 ${receiptGlobalIdx+1} 张回单图片…`,progressDone,pageNums.length);
+        const {dataUrl:imgData,bytes:imgBytes}=await pdfSplitCanvasToJpeg(exportCanvas,0.9);
         pdfSplitThrowIfCancelled(runId);
 
         const subDoc=await PDFLib.PDFDocument.create();
@@ -8380,6 +8470,44 @@ function pdfSplitDataUrlToBytes(dataUrl){
   const bytes=new Uint8Array(bin.length);
   for(let i=0;i<bin.length;i++)bytes[i]=bin.charCodeAt(i);
   return bytes;
+}
+function pdfSplitCanvasToJpeg(canvas,quality=0.9){
+  return new Promise((resolve,reject)=>{
+    const fallback=()=>{
+      try{
+        const dataUrl=canvas.toDataURL('image/jpeg',quality);
+        resolve({dataUrl,bytes:pdfSplitDataUrlToBytes(dataUrl)});
+      }catch(error){reject(error);}
+    };
+    if(!canvas||typeof canvas.toBlob!=='function'){
+      fallback();
+      return;
+    }
+    try{
+      canvas.toBlob(blob=>{
+        if(!blob){fallback();return;}
+        const reader=new FileReader();
+        reader.onload=()=>{
+          const dataUrl=String(reader.result||'');
+          const readBytes=typeof blob.arrayBuffer==='function'
+            ? blob.arrayBuffer()
+            : new Promise((resolveBytes,rejectBytes)=>{
+                const bytesReader=new FileReader();
+                bytesReader.onload=()=>resolveBytes(bytesReader.result);
+                bytesReader.onerror=()=>rejectBytes(bytesReader.error||new Error('JPEG 数据读取失败'));
+                bytesReader.readAsArrayBuffer(blob);
+              });
+          Promise.resolve(readBytes)
+            .then(buffer=>resolve({dataUrl,bytes:new Uint8Array(buffer)}))
+            .catch(reject);
+        };
+        reader.onerror=()=>reject(reader.error||new Error('JPEG 预览读取失败'));
+        reader.readAsDataURL(blob);
+      },'image/jpeg',quality);
+    }catch(error){
+      reject(error);
+    }
+  });
 }
 
 // ===== 回单裁剪调整 =====

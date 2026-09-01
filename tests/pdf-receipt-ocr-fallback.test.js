@@ -121,6 +121,26 @@ function loadReceiptContentBox(html, overrides = {}) {
   return context.api;
 }
 
+function loadReceiptBlankDetector(html, overrides = {}) {
+  const start = html.indexOf('function pdfSplitIsBlankReceiptCanvas(');
+  const end = html.indexOf('\nfunction pdfSplitLinesFromRegion(', start);
+  assert.ok(start >= 0 && end > start, 'receipt blank detector should exist');
+  const context = { ...overrides };
+  vm.createContext(context);
+  vm.runInContext(`${html.slice(start, end)}\nthis.api={pdfSplitIsBlankReceiptCanvas};`, context);
+  return context.api;
+}
+
+function loadReceiptTableDetector(html, overrides = {}) {
+  const start = html.indexOf('function pdfSplitDetectReceiptTableRows(');
+  const end = html.indexOf('\nfunction pdfSplitCreateFixedFieldOcrCanvases(', start);
+  assert.ok(start >= 0 && end > start, 'receipt table detector should exist');
+  const context = { ...overrides };
+  vm.createContext(context);
+  vm.runInContext(`${html.slice(start, end)}\nthis.api={pdfSplitDetectReceiptTableRows};`, context);
+  return context.api;
+}
+
 function loadAmountParser(html) {
   const start = html.indexOf('function pdfSplitNormalizeAmountToken(');
   const end = html.indexOf('\nfunction pdfSplitExtractAmount(', start);
@@ -516,6 +536,56 @@ test('automatic content-box analysis uses a downsampled surface', () => {
   assert.ok(calls.some(call => call.width < canvas.width && call.height < canvas.height), 'content-box analysis should use a downsampled surface');
 });
 
+test('blank receipt checks use a downsampled surface', () => {
+  const calls = [];
+  const makeContext = () => ({
+    fillRect() {},
+    drawImage() {},
+    getImageData(_x, _y, width, height) {
+      calls.push({ width, height });
+      return { data: new Uint8ClampedArray(width * height * 4).fill(255) };
+    }
+  });
+  const { pdfSplitIsBlankReceiptCanvas: isBlank } = loadReceiptBlankDetector(source(), {
+    document: { createElement: () => ({ getContext: makeContext }) }
+  });
+  const canvas = { width: 1600, height: 1200, getContext: makeContext };
+
+  assert.equal(isBlank(canvas), true);
+
+  assert.ok(calls.length <= 2, `blank check should use a small number of pixel reads, got ${calls.length}`);
+  assert.ok(calls.some(call => call.width < canvas.width && call.height < canvas.height), 'blank check should use a downsampled surface');
+});
+
+test('receipt export encodes JPEG asynchronously to keep progress responsive', () => {
+  const html = source();
+  const execute = html.slice(html.indexOf('async function pdfSplitExecute'), html.indexOf('\nfunction pdfSplitCurrentExportFormat'));
+  assert.match(html, /function pdfSplitCanvasToJpeg\s*\(/, 'receipt export should have an asynchronous JPEG helper');
+  assert.match(execute, /await pdfSplitCanvasToJpeg\(exportCanvas,0\.9\)/, 'receipt splitting should await asynchronous JPEG encoding');
+  assert.doesNotMatch(execute, /exportCanvas\.toDataURL\(['"]image\/jpeg['"],0\.9\)/, 'receipt splitting should not synchronously encode each export image');
+});
+
+test('table-row detection uses a downsampled surface', () => {
+  const calls = [];
+  const makeContext = () => ({
+    fillRect() {},
+    drawImage() {},
+    getImageData(_x, _y, width, height) {
+      calls.push({ width, height });
+      return { data: new Uint8ClampedArray(width * height * 4).fill(255) };
+    }
+  });
+  const { pdfSplitDetectReceiptTableRows: detect } = loadReceiptTableDetector(source(), {
+    document: { createElement: () => ({ getContext: makeContext }) }
+  });
+  const canvas = { width: 1800, height: 1400, getContext: makeContext };
+
+  assert.equal(detect(canvas).length, 0);
+
+  assert.equal(calls.length, 1, 'table detection should read pixels once');
+  assert.ok(calls[0].width < canvas.width && calls[0].height < canvas.height, 'table detection should use a downsampled surface');
+});
+
 test('compact single-receipt scans skip gap analysis before it starts', () => {
   const html = source();
   const executeStart = html.indexOf('async function pdfSplitExecute');
@@ -575,7 +645,7 @@ test('receipt UI recommends template splitting and reuses one OCR pass per image
   const execute = html.slice(html.indexOf('async function pdfSplitExecute'), html.indexOf('\nfunction pdfSplitCurrentExportFormat'));
   assert.match(execute, /pagePaddleOcr/, 'execute should keep a page-level OCR result');
   assert.match(execute, /pdfSplitPaddleResultForCrop\(pagePaddleOcr/, 'each crop should reuse the page-level OCR result');
-  assert.match(execute, /pdfSplitOcrReceiptCanvas\(cc,cropLines,layoutFields,cropPaddleOcr\)/, 'receipt OCR should accept the shared crop result');
+  assert.match(execute, /pdfSplitOcrReceiptCanvas\(cc,cropLines,layoutFields,cropPaddleOcr(?:,cropTesseractOcr)?\)/, 'receipt OCR should accept the shared crop result');
   assert.match(execute, /templateOcrEnabled/, 'template mode should keep an explicit OCR switch');
   assert.match(execute, /templateOcrEnabled\s*\?\s*await pdfSplitOcrReceiptCanvas/, 'template mode should recognize when OCR is enabled');
   const reset = html.slice(html.indexOf('function pdfSplitReset'), html.indexOf('\nfunction pdfSplitClearUpload', html.indexOf('function pdfSplitReset')));
@@ -589,6 +659,16 @@ test('receipt OCR forwards timeout cancellation to both OCR engines', () => {
   assert.match(coordinator, /pdfSplitWithTimeout\(\(registerCancel\)=>pdfSplitRunTesseractOcr\(canvas,undefined,registerCancel\)/, 'Tesseract should receive the timeout cancellation callback');
   assert.match(coordinator, /pdfSplitRunTesseractOcr\(focusedCanvas,undefined,registerCancel\)/, 'focused Tesseract OCR should share cancellation');
   assert.match(coordinator, /pdfSplitRunTesseractOcr\(fixedCanvases\[key\],\{tessedit_pageseg_mode:'7',preserve_interword_spaces:'1'\},registerCancel\)/, 'fixed-cell Tesseract OCR should share cancellation');
+});
+
+test('incomplete text layers reuse page OCR instead of repeating full-crop OCR', () => {
+  const html = source();
+  const execute = html.slice(html.indexOf('async function pdfSplitExecute'), html.indexOf('\nfunction pdfSplitCurrentExportFormat'));
+  const coordinator = html.slice(html.indexOf('async function pdfSplitOcrReceiptCanvas'), html.indexOf('function pdfSplitBuildReceiptBaseName'));
+  assert.match(execute, /pageTextItems\.length===0\|\|pageTextFieldsNeedOcr/, 'a partial text layer should trigger page-level OCR');
+  assert.match(execute, /pageTesseractOcr/, 'page-level Tesseract fallback should be cached');
+  assert.match(execute, /pdfSplitOcrReceiptCanvas\(cc,cropLines,layoutFields,cropPaddleOcr,cropTesseractOcr\)/, 'each crop should consume shared page OCR results');
+  assert.match(coordinator, /sharedTesseractOcr/, 'receipt OCR should accept a shared Tesseract result');
 });
 
 test('template mode highlights the receipt count setting', () => {
@@ -770,7 +850,7 @@ test('canonical entry sends the original receipt crop to OCR so small party labe
   for (const file of canonicalFiles) {
     const html = source(file);
     const receiptLoop = html.slice(html.indexOf('for(let n=0;n<receiptCrops.length;n++)'), html.indexOf('const baseName=pdfSplitBuildReceiptBaseName'));
-    assert.match(receiptLoop, /pdfSplitOcrReceiptCanvas\(cc,cropLines,layoutFields,cropPaddleOcr\)/, `${file} OCR uses the original crop`);
+    assert.match(receiptLoop, /pdfSplitOcrReceiptCanvas\(cc,cropLines,layoutFields,cropPaddleOcr(?:,cropTesseractOcr)?\)/, `${file} OCR uses the original crop`);
     assert.doesNotMatch(receiptLoop, /pdfSplitOcrReceiptCanvas\(processed,cropLines,layoutFields\)/, `${file} must not OCR the destructive preprocessing output`);
   }
 });
