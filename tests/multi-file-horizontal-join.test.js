@@ -74,23 +74,22 @@ test('Sheet merge reuses horizontal join with the same result-based controls', (
   assert.match(html, /id="sheetJoinKey"/);
   assert.match(html, /function sheetRefreshJoinKeyOptions\(\)/);
   assert.match(html, /const joined=multiBuildHorizontalJoin\(sel\.map/);
-  assert.match(html, /按公司名称，把不同 Sheet 的金额放到同一行/);
+  assert.match(html, /class="merge-choice-title">按字段匹配/);
 });
 
 test('merge choices explain the visible result without database terminology', () => {
-  assert.match(html, /数据接到下面（行变多）/);
-  assert.match(html, /数据补到同一行（列变多）/);
-  assert.match(html, /根据哪一列找到同一条数据？/);
-  assert.match(html, /把金额1、金额2放到同一行/);
+  assert.match(html, /class="merge-choice-title">上下追加/);
+  assert.match(html, /class="merge-choice-badge">行增加/);
+  assert.match(html, /class="merge-choice-title">按字段匹配/);
+  assert.match(html, /class="merge-choice-badge">列增加/);
 });
 
 test('header and export settings use examples users can recognize from their sheets', () => {
-  assert.match(html, /合并后放几个工作表？/);
-  assert.match(html, /不知道怎么选就保持“全部放在一个工作表”/);
-  assert.match(html, /导出后仍保留“明细、汇总”两个工作表/);
-  assert.match(html, /每张表开头有几行标题？/);
-  assert.match(html, /真正的列名在第几行？/);
-  assert.match(html, /第 1 行：2026 年销售汇总/);
-  assert.match(html, /第 2 行：公司名称｜金额/);
+  assert.match(html, /输出工作表/);
+  assert.match(html, /全部放在一个工作表/);
+  assert.match(html, /表头行数/);
+  assert.match(html, /字段名行/);
+  assert.match(html, /表头预览/);
+  assert.match(html, /字段名：第 '\+\(keyIndex\+1\)\+' 行/);
   assert.match(html, /function multiUpdateHeaderGuidance\(\)/);
 });

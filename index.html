@@ -879,6 +879,290 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   .toggle-row:last-child { border-bottom: none; }
   .toggle-text { flex: 1; font-size: 14px; color: var(--gray-700); }
   .toggle-text small { display: block; font-size: 12px; color: var(--gray-400); margin-top: 2px; }
+  .merge-settings-card {
+    padding: 20px 24px 24px;
+  }
+  .merge-settings-card .card-title {
+    margin-bottom: 4px;
+    font-size: 17px;
+  }
+  .merge-settings-card .toggle-text small { display: none; }
+  .merge-config-section,
+  .merge-header-settings {
+    padding-left: 0;
+    padding-right: 0;
+  }
+  .merge-config-section { padding-top: 12px; padding-bottom: 16px; }
+  .merge-header-settings { padding-top: 16px; padding-bottom: 4px; }
+  .merge-settings-card .option-section-title {
+    margin-bottom: 8px;
+    color: var(--gray-500);
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: .02em;
+  }
+  .merge-choice-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+  .merge-choice {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 70px;
+    padding: 12px 14px;
+    border: 1px solid var(--gray-200);
+    border-radius: 10px;
+    background: var(--gray-50);
+    color: var(--gray-800);
+    cursor: pointer;
+    user-select: none;
+    transition: border-color .18s ease, background .18s ease, box-shadow .18s ease, transform .18s ease;
+  }
+  .merge-choice:hover {
+    border-color: var(--primary-light);
+    background: var(--primary-bg);
+    box-shadow: 0 4px 12px rgba(var(--primary-rgb), .10);
+    transform: translateY(-1px);
+  }
+  .merge-choice:focus-within {
+    outline: 2px solid var(--primary-light);
+    outline-offset: 2px;
+  }
+  .merge-choice.is-selected {
+    border-color: var(--primary);
+    background: var(--primary-bg);
+    box-shadow: 0 0 0 3px rgba(var(--primary-rgb), .10);
+  }
+  .merge-choice input {
+    width: 18px;
+    height: 18px;
+    flex: 0 0 auto;
+    margin: 0;
+    accent-color: var(--primary);
+    cursor: pointer;
+  }
+  .merge-choice-copy { min-width: 0; flex: 1; }
+  .merge-choice-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--gray-800);
+    font-size: 15px;
+    font-weight: 600;
+    line-height: 1.35;
+  }
+  .merge-choice-badge {
+    padding: 2px 6px;
+    border-radius: 5px;
+    background: var(--gray-100);
+    color: var(--gray-500);
+    font-size: 11px;
+    font-weight: 500;
+    white-space: nowrap;
+  }
+  .merge-choice.is-selected .merge-choice-badge {
+    background: white;
+    color: var(--primary);
+  }
+  .merge-choice-visual {
+    display: flex;
+    flex: 0 0 38px;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    width: 38px;
+    height: 30px;
+    opacity: .6;
+  }
+  .merge-choice.is-selected .merge-choice-visual { opacity: 1; }
+  .merge-choice-visual.append { flex-direction: column; }
+  .merge-choice-visual.append i {
+    display: block;
+    width: 28px;
+    height: 4px;
+    border-radius: 3px;
+    background: var(--gray-300);
+  }
+  .merge-choice-visual.append i:nth-child(3) { background: var(--primary); }
+  .merge-choice-visual.join { flex-direction: row; }
+  .merge-choice-visual.join i {
+    display: block;
+    width: 13px;
+    height: 22px;
+    border: 2px solid var(--gray-300);
+    border-radius: 3px;
+  }
+  .merge-choice-visual.join i:last-child { border-color: var(--primary); }
+  .merge-settings-card .merge-join-key-row {
+    min-height: 52px;
+    padding: 12px 0;
+  }
+  .merge-settings-card .merge-header-count-row,
+  .merge-settings-card .merge-header-key-row {
+    min-height: 52px;
+    padding: 10px 0;
+  }
+  .merge-field-label {
+    display: block;
+    color: var(--gray-800);
+    font-size: 15px;
+    font-weight: 600;
+    line-height: 1.35;
+  }
+  .merge-number-input,
+  .merge-select {
+    min-height: 40px;
+    padding: 8px 12px;
+    border: 1px solid var(--gray-300);
+    border-radius: 8px;
+    background: white;
+    color: var(--gray-700);
+    font-size: 14px;
+    outline: none;
+    transition: border-color .18s ease, box-shadow .18s ease, background .18s ease;
+  }
+  .merge-number-input { width: 72px; }
+  .merge-select { min-width: 180px; }
+  .merge-number-input:hover,
+  .merge-select:hover { border-color: var(--primary-light); }
+  .merge-number-input:focus,
+  .merge-select:focus {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(var(--primary-rgb), .12);
+  }
+  .merge-unit { color: var(--gray-500); font-size: 13px; }
+  .merge-no-header {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 36px;
+    margin-left: 6px;
+    padding: 5px 9px;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    color: var(--gray-600);
+    cursor: pointer;
+    font-size: 13px;
+    transition: border-color .18s ease, background .18s ease, color .18s ease;
+  }
+  .merge-no-header:hover { border-color: var(--gray-200); background: var(--gray-50); color: var(--gray-800); }
+  .merge-no-header input { accent-color: var(--primary); }
+  .merge-join-key-hint { color: var(--gray-400); font-size: 12px; }
+  .merge-join-key-hint.is-error { color: var(--danger); }
+  .merge-settings-card .advanced-settings { margin-top: 12px; }
+  .merge-settings-card .advanced-settings summary {
+    padding: 11px 14px;
+    color: var(--gray-500);
+    font-size: 12px;
+  }
+  .merge-settings-card .advanced-settings-body { padding: 0 14px 8px; }
+  .merge-settings-card .advanced-settings-body .toggle-text { font-size: 13px; }
+  .merge-settings-card .btn-row { margin-top: 16px; }
+  .merge-config-section,
+  .merge-header-settings {
+    padding: 0;
+    border-bottom: 1px solid var(--gray-100);
+  }
+  .merge-config-section { padding: 12px 0 16px; }
+  .merge-header-settings { padding: 16px 0 4px; }
+  .option-section-title {
+    margin-bottom: 10px;
+    color: var(--gray-700);
+    font-size: 13px;
+    font-weight: 600;
+  }
+  .merge-header-settings .toggle-row { padding: 10px 0; }
+  .header-preview {
+    margin-top: 10px;
+    overflow: hidden;
+    border: 1px solid var(--gray-200);
+    border-radius: 9px;
+    background: var(--gray-50);
+  }
+  .header-preview-title {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 8px 10px;
+    color: var(--gray-500);
+    font-size: 12px;
+    border-bottom: 1px solid var(--gray-200);
+  }
+  .header-preview-title-note {
+    padding: 3px 7px;
+    border-radius: 5px;
+    background: var(--primary-bg);
+    color: var(--primary);
+    font-size: 11px;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  .header-preview-row {
+    display: flex;
+    align-items: center;
+    min-height: 32px;
+    border-top: 1px solid var(--gray-100);
+    color: var(--gray-600);
+    font-size: 12px;
+  }
+  .header-preview-row.is-header { color: var(--gray-700); font-weight: 500; }
+  .header-preview-row.is-data { color: var(--gray-400); }
+  .header-preview-row.is-key .header-preview-content { color: var(--primary); font-weight: 600; }
+  .header-preview-row:first-of-type { border-top: none; }
+  .header-preview-title + .header-preview-row { border-top: none; }
+  .header-preview-number {
+    flex: 0 0 58px;
+    padding: 7px 8px;
+    color: var(--gray-400);
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+  .header-preview-content {
+    min-width: 0;
+    flex: 1;
+    overflow: hidden;
+    padding: 7px 8px;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+  .header-preview-tag {
+    flex: 0 0 auto;
+    margin-right: 8px;
+    padding: 2px 6px;
+    border-radius: 5px;
+    background: var(--gray-100);
+    color: var(--gray-500);
+    font-size: 11px;
+  }
+  .header-preview-row.is-key { background: var(--primary-bg); }
+  .header-preview-row.is-key .header-preview-tag {
+    background: var(--primary);
+    color: white;
+  }
+  .header-preview-row.is-data .header-preview-tag { background: transparent; }
+  .header-preview-empty {
+    padding: 10px;
+    color: var(--gray-400);
+    font-size: 12px;
+  }
+  body.theme-dark .merge-choice { background: #1E2030; border-color: #2A2D40; color: #D0D4EC; }
+  body.theme-dark .merge-choice:hover,
+  body.theme-dark .merge-choice.is-selected { background: #2A3050; border-color: #7B8FF7; }
+  body.theme-dark .merge-choice-title,
+  body.theme-dark .merge-field-label { color: #D0D4EC; }
+  body.theme-dark .merge-choice-badge { background: #252836; color: #9A9EB6; }
+  body.theme-dark .merge-choice.is-selected .merge-choice-badge { background: #1E2030; color: #96A8FF; }
+  body.theme-dark .merge-number-input,
+  body.theme-dark .merge-select { background: #1E2030; color: #D0D4EC; border-color: #3A3E52; }
+  body.theme-dark .merge-no-header:hover { background: #252836; border-color: #3A3E52; color: #D0D4EC; }
+  body.theme-dark .header-preview { background: #181A22; border-color: #2A2D40; }
+  body.theme-dark .header-preview-title { border-bottom-color: #2A2D40; }
+  body.theme-dark .header-preview-row { border-top-color: #252836; }
+  body.theme-dark .header-preview-row.is-key { background: #2A3050; }
+  body.theme-dark .header-preview-title-note { background: #252836; color: #96A8FF; }
   .pdf-split-mode-picker {
     display: flex; align-items: flex-start; gap: 16px;
     padding: 12px 0 10px; border-bottom: 1px solid var(--gray-100);
@@ -1412,6 +1696,13 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     .upload-zone { min-height: 172px; padding: 28px 16px; }
     .upload-support-summary span { font-size: 11px; padding: 4px 8px; }
     .tool-header h3 { font-size: 17px; }
+    .merge-settings-card { padding: 18px; }
+    .merge-choice-grid { grid-template-columns: 1fr; }
+    .merge-choice { min-height: 62px; }
+    .merge-choice-title { font-size: 14px; }
+    .merge-header-count-row { align-items: flex-start; flex-direction: column; gap: 8px; }
+    .merge-header-count-row > div:last-child { flex-wrap: wrap; }
+    .header-preview-title { align-items: flex-start; flex-direction: column; gap: 3px; }
   }
 
   /* ===== PDF Tool ===== */
@@ -1817,105 +2108,103 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     </div>
 
     <!-- Options -->
-    <div class="card" id="multiOptionsCard" style="display:none;">
-      <div class="card-title"><span class="icon">⚙️</span> 选择合并方式和设置</div>
+    <div class="card merge-settings-card" id="multiOptionsCard" style="display:none;">
+      <div class="card-title"><span class="icon">⚙️</span> 合并设置</div>
 
-      <div style="padding:14px 16px;border-bottom:1px solid var(--gray-100);">
-        <div class="toggle-text" style="margin-bottom:10px;">你希望合并后是什么样？<small>直接看结果选择，不需要理解专业术语</small></div>
-        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;">
-          <label id="multiAppendChoice" style="display:flex;gap:10px;align-items:flex-start;padding:12px;border:1px solid var(--primary);border-radius:10px;cursor:pointer;background:var(--primary-light);">
-            <input type="radio" name="multiMergeDirection" value="append" checked onchange="multiToggleMergeDirection()" style="margin-top:3px;">
-            <span><strong style="display:block;color:var(--gray-800);font-size:14px;">数据接到下面（行变多）</strong><small style="display:block;color:var(--gray-500);margin-top:4px;line-height:1.5;">例如：1月、2月明细合成一张长表</small></span>
+      <div class="merge-config-section merge-direction-section">
+        <div class="option-section-title">合并方式</div>
+        <div class="merge-choice-grid">
+          <label id="multiAppendChoice" class="merge-choice is-selected">
+            <input type="radio" name="multiMergeDirection" value="append" checked onchange="multiToggleMergeDirection()">
+            <span class="merge-choice-copy"><span class="merge-choice-title">上下追加 <span class="merge-choice-badge">行增加</span></span></span>
+            <span class="merge-choice-visual append" aria-hidden="true"><i></i><i></i><i></i></span>
           </label>
-          <label id="multiJoinChoice" style="display:flex;gap:10px;align-items:flex-start;padding:12px;border:1px solid var(--gray-300);border-radius:10px;cursor:pointer;background:white;">
-            <input type="radio" name="multiMergeDirection" value="join" onchange="multiToggleMergeDirection()" style="margin-top:3px;">
-            <span><strong style="display:block;color:var(--gray-800);font-size:14px;">数据补到同一行（列变多）</strong><small style="display:block;color:var(--gray-500);margin-top:4px;line-height:1.5;">例如：按公司名称，把金额1、金额2放到同一行</small></span>
-          </label>
-        </div>
-      </div>
-      <div class="toggle-row" id="multiJoinKeyRow" style="display:none;">
-        <div class="toggle-text">根据哪一列找到同一条数据？<small id="multiJoinKeyHint">系统会自动列出每张表都有的列</small></div>
-        <select id="multiJoinKey" onchange="multiUpdateJoinKeyHint()" style="min-width:180px;padding:8px 12px;border:1px solid var(--gray-300);border-radius:8px;font-size:14px;color:var(--gray-700);background:white;"></select>
-      </div>
-
-      <div class="toggle-row">
-        <div class="toggle-text">合并后放几个工作表？<small>不知道怎么选就保持“全部放在一个工作表”</small></div>
-        <div style="display:flex;flex-direction:column;gap:6px;font-size:13px;color:var(--gray-600);">
-          <label><input type="radio" name="multiOutputMode" value="single" checked> 全部放在一个工作表（常用）</label>
-          <label><input type="radio" name="multiOutputMode" value="grouped"> 原来不同名字的 Sheet 继续分开放</label>
-          <small style="margin-left:22px;color:var(--gray-400);line-height:1.5;">例：每个文件都有“明细”和“汇总”，导出后仍保留“明细、汇总”两个工作表</small>
-        </div>
-      </div>
-
-      <div class="toggle-row">
-        <div class="toggle-text">每张表开头有几行标题？<small id="multiHeaderSimpleHelp">最常见：第 1 行是“公司名称、金额”等列名，保持 1 即可</small></div>
-        <div style="display:flex;align-items:center;gap:8px;">
-          <input type="number" id="multiHeaderRows" value="1" min="0" max="20" style="width:72px;padding:8px 12px;border:1px solid var(--gray-300);border-radius:8px;font-size:14px;color:var(--gray-700);outline:none;" onchange="multiHeaderChange()">
-          <span style="font-size:13px;color:var(--gray-500);">行</span>
-          <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--gray-600);cursor:pointer;margin-left:8px;">
-            <input type="checkbox" id="multiNoHeader" onchange="multiToggleNoHeader()"> 第一行就是数据（没有列名）
+          <label id="multiJoinChoice" class="merge-choice">
+            <input type="radio" name="multiMergeDirection" value="join" onchange="multiToggleMergeDirection()">
+            <span class="merge-choice-copy"><span class="merge-choice-title">按字段匹配 <span class="merge-choice-badge">列增加</span></span></span>
+            <span class="merge-choice-visual join" aria-hidden="true"><i></i><i></i></span>
           </label>
         </div>
       </div>
-
-      <div class="toggle-row" id="multiMergeHeaderRow">
-        <div class="toggle-text">要把标题横向合成一个大标题吗？<small>仅导出 Excel 生效；普通单行列名不用开启</small></div>
-        <div style="display:flex;align-items:center;gap:8px;">
-          <label class="toggle"><input type="checkbox" id="multiMergeHdr" onchange="multiToggleMergeHdr()"><span class="slider"></span></label>
-          <span style="font-size:13px;color:var(--gray-500);margin-left:8px;"></span>
-          <input type="number" id="multiMergeHdrRows" value="1" min="1" max="20" style="width:60px;padding:6px 8px;border:1px solid var(--gray-300);border-radius:6px;font-size:14px;color:var(--gray-700);outline:none;display:none;">
-          <span style="font-size:13px;color:var(--gray-500);display:none;" id="multiMergeHdrLabel">行</span>
-        </div>
+      <div class="toggle-row merge-join-key-row" id="multiJoinKeyRow" style="display:none;">
+        <div class="toggle-text"><span class="merge-field-label">匹配字段</span><span id="multiJoinKeyHint" class="merge-join-key-hint">自动检测</span></div>
+        <select id="multiJoinKey" class="merge-select" onchange="multiUpdateJoinKeyHint()"></select>
       </div>
 
-      <div class="toggle-row">
-        <div class="toggle-text">要标记每行来自哪个文件吗？<small>开启后会新增“来源”列，方便回查原文件</small></div>
-        <label class="toggle"><input type="checkbox" id="multiAddSource" checked onchange="multiToggleSource()"><span class="slider"></span></label>
-      </div>
-      <div id="multiSourceBox" class="source-mode-box">
-        <div class="source-mode-options">
-          <label><input type="radio" name="multiSourceMode" value="auto" checked onchange="multiToggleSource()"> 自动（文件名 - Sheet名）</label>
-          <label><input type="radio" name="multiSourceMode" value="custom" onchange="multiToggleSource()"> 自定义固定值</label>
+      <div class="merge-header-settings">
+        <div class="option-section-title">表头</div>
+        <div class="toggle-row merge-header-count-row">
+          <div class="toggle-text"><span class="merge-field-label">表头行数</span></div>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <input type="number" id="multiHeaderRows" class="merge-number-input" value="1" min="0" max="20" onchange="multiHeaderChange()">
+            <span class="merge-unit">行</span>
+            <label class="merge-no-header">
+              <input type="checkbox" id="multiNoHeader" onchange="multiToggleNoHeader()"> 无表头
+            </label>
+          </div>
         </div>
-        <div id="multiSourceCustom" style="display:none;">
-          <input type="text" id="multiSourceText" class="source-custom-input" placeholder="例如：2026年5月门店数据">
+        <div class="toggle-row merge-header-key-row" id="multiHeaderKeySetting" style="display:none;">
+          <div class="toggle-text"><span class="merge-field-label">字段名行</span></div>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <input type="number" id="multiHeaderKeyRow" class="merge-number-input" value="1" min="1" max="20" onchange="multiRefreshJoinKeyOptions()">
+            <span class="merge-unit">行</span>
+          </div>
         </div>
+        <div class="header-preview" id="multiHeaderKeyExample" style="display:none;"></div>
       </div>
 
       <details class="advanced-settings">
-        <summary>高级设置（一般不用改）</summary>
+        <summary>更多设置</summary>
         <div class="advanced-settings-body">
           <div class="toggle-row">
-            <div class="toggle-text">忽略完全空白的行<small>建议保持开启</small></div>
+            <div class="toggle-text">输出工作表</div>
+            <div style="display:flex;flex-direction:column;gap:6px;font-size:13px;color:var(--gray-600);">
+              <label><input type="radio" name="multiOutputMode" value="single" checked> 全部放在一个工作表</label>
+              <label><input type="radio" name="multiOutputMode" value="grouped"> 按原来的 Sheet 名称分开</label>
+            </div>
+          </div>
+
+          <div class="toggle-row">
+            <div class="toggle-text">添加来源列</div>
+            <label class="toggle"><input type="checkbox" id="multiAddSource" checked onchange="multiToggleSource()"><span class="slider"></span></label>
+          </div>
+          <div id="multiSourceBox" class="source-mode-box">
+            <div class="source-mode-options">
+              <label><input type="radio" name="multiSourceMode" value="auto" checked onchange="multiToggleSource()"> 自动</label>
+              <label><input type="radio" name="multiSourceMode" value="custom" onchange="multiToggleSource()"> 自定义</label>
+            </div>
+            <div id="multiSourceCustom" style="display:none;">
+              <input type="text" id="multiSourceText" class="source-custom-input" placeholder="固定来源名称">
+            </div>
+          </div>
+
+          <div class="toggle-row">
+            <div class="toggle-text">忽略空白行</div>
             <label class="toggle"><input type="checkbox" id="multiSkipEmpty" checked><span class="slider"></span></label>
           </div>
           <div class="toggle-row" id="multiAlignByNameRow">
-            <div class="toggle-text">列顺序不一样时自动对齐<small>建议保持开启。例如两张表的“公司名称、金额”顺序相反，也能放对位置</small></div>
+            <div class="toggle-text">自动对齐列顺序</div>
             <label class="toggle"><input type="checkbox" id="multiAlignByName" checked onchange="multiUpdateHeaderGuidance()"><span class="slider"></span></label>
           </div>
-          <div class="toggle-row" id="multiHeaderKeySetting" style="display:none;">
-            <div class="toggle-text">真正的列名在第几行？<small>只有开头有 2 行以上标题时才需要设置</small></div>
+          <div class="toggle-row" id="multiMergeHeaderRow">
+            <div class="toggle-text">合并大标题</div>
             <div style="display:flex;align-items:center;gap:8px;">
-              <input type="number" id="multiHeaderKeyRow" value="1" min="1" max="20" style="width:72px;padding:8px 12px;border:1px solid var(--gray-300);border-radius:8px;font-size:14px;color:var(--gray-700);outline:none;" onchange="multiRefreshJoinKeyOptions()">
-              <span style="font-size:13px;color:var(--gray-500);">行</span>
+              <label class="toggle"><input type="checkbox" id="multiMergeHdr" onchange="multiToggleMergeHdr()"><span class="slider"></span></label>
+              <input type="number" id="multiMergeHdrRows" value="1" min="1" max="20" style="width:60px;padding:6px 8px;border:1px solid var(--gray-300);border-radius:6px;font-size:14px;color:var(--gray-700);outline:none;display:none;">
+              <span style="font-size:13px;color:var(--gray-500);display:none;" id="multiMergeHdrLabel">行</span>
             </div>
           </div>
-          <div class="option-help" id="multiHeaderKeyExample" style="display:none;line-height:1.8;">
-            <strong>看原表判断：</strong><br>
-            第 1 行：2026 年销售汇总　← 大标题<br>
-            第 2 行：公司名称｜金额　← 真正的列名<br>
-            这种情况填写：开头标题 <strong>2</strong> 行，真正列名在第 <strong>2</strong> 行。
-          </div>
           <div class="toggle-row">
-            <div class="toggle-text">删除完全相同的数据行<small>只有整行内容都相同才会删除</small></div>
+            <div class="toggle-text">删除重复数据</div>
             <label class="toggle"><input type="checkbox" id="multiDedupe"><span class="slider"></span></label>
           </div>
           <div class="toggle-row">
-            <div class="toggle-text">保留日期、百分比等显示格式<small>建议保持开启</small></div>
+            <div class="toggle-text">保留显示格式</div>
             <label class="toggle"><input type="checkbox" id="multiKeepFmt" checked><span class="slider"></span></label>
           </div>
         </div>
       </details>
+
       <div class="btn-row">
         <button class="btn btn-primary" onclick="multiMerge()" id="multiMergeBtn" disabled>🔄 开始合并</button>
       </div>
@@ -1975,82 +2264,82 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     </div>
 
     <!-- Options -->
-    <div class="card" id="sheetOptionsCard" style="display:none;">
-      <div class="card-title"><span class="icon">⚙️</span> 选择合并方式和设置</div>
+    <div class="card merge-settings-card" id="sheetOptionsCard" style="display:none;">
+      <div class="card-title"><span class="icon">⚙️</span> 合并设置</div>
 
-      <div style="padding:14px 16px;border-bottom:1px solid var(--gray-100);">
-        <div class="toggle-text" style="margin-bottom:10px;">你希望合并后是什么样？<small>直接看结果选择，不需要理解专业术语</small></div>
-        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;">
-          <label id="sheetAppendChoice" style="display:flex;gap:10px;align-items:flex-start;padding:12px;border:1px solid var(--primary);border-radius:10px;cursor:pointer;background:var(--primary-light);">
-            <input type="radio" name="sheetMergeDirection" value="append" checked onchange="sheetToggleMergeDirection()" style="margin-top:3px;">
-            <span><strong style="display:block;color:var(--gray-800);font-size:14px;">数据接到下面（行变多）</strong><small style="display:block;color:var(--gray-500);margin-top:4px;line-height:1.5;">例如：把“1月、2月”工作表合成一张长表</small></span>
+      <div class="merge-config-section merge-direction-section">
+        <div class="option-section-title">合并方式</div>
+        <div class="merge-choice-grid">
+          <label id="sheetAppendChoice" class="merge-choice is-selected">
+            <input type="radio" name="sheetMergeDirection" value="append" checked onchange="sheetToggleMergeDirection()">
+            <span class="merge-choice-copy"><span class="merge-choice-title">上下追加 <span class="merge-choice-badge">行增加</span></span></span>
+            <span class="merge-choice-visual append" aria-hidden="true"><i></i><i></i><i></i></span>
           </label>
-          <label id="sheetJoinChoice" style="display:flex;gap:10px;align-items:flex-start;padding:12px;border:1px solid var(--gray-300);border-radius:10px;cursor:pointer;background:white;">
-            <input type="radio" name="sheetMergeDirection" value="join" onchange="sheetToggleMergeDirection()" style="margin-top:3px;">
-            <span><strong style="display:block;color:var(--gray-800);font-size:14px;">数据补到同一行（列变多）</strong><small style="display:block;color:var(--gray-500);margin-top:4px;line-height:1.5;">例如：按公司名称，把不同 Sheet 的金额放到同一行</small></span>
-          </label>
-        </div>
-      </div>
-      <div class="toggle-row" id="sheetJoinKeyRow" style="display:none;">
-        <div class="toggle-text">根据哪一列找到同一条数据？<small id="sheetJoinKeyHint">系统会自动列出所选工作表都有的列</small></div>
-        <select id="sheetJoinKey" onchange="sheetUpdateJoinKeyHint()" style="min-width:180px;padding:8px 12px;border:1px solid var(--gray-300);border-radius:8px;font-size:14px;color:var(--gray-700);background:white;"></select>
-      </div>
-
-      <div class="toggle-row">
-        <div class="toggle-text">每个工作表开头有几行标题？<small id="sheetHeaderSimpleHelp">最常见：第 1 行是“公司名称、金额”等列名，保持 1 即可</small></div>
-        <div style="display:flex;align-items:center;gap:8px;">
-          <input type="number" id="sheetHeaderRows" value="1" min="0" max="20" style="width:72px;padding:8px 12px;border:1px solid var(--gray-300);border-radius:8px;font-size:14px;color:var(--gray-700);outline:none;" onchange="sheetHeaderChange()">
-          <span style="font-size:13px;color:var(--gray-500);">行</span>
-          <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--gray-600);cursor:pointer;margin-left:8px;">
-            <input type="checkbox" id="sheetNoHeader" onchange="sheetToggleNoHeader()"> 第一行就是数据（没有列名）
+          <label id="sheetJoinChoice" class="merge-choice">
+            <input type="radio" name="sheetMergeDirection" value="join" onchange="sheetToggleMergeDirection()">
+            <span class="merge-choice-copy"><span class="merge-choice-title">按字段匹配 <span class="merge-choice-badge">列增加</span></span></span>
+            <span class="merge-choice-visual join" aria-hidden="true"><i></i><i></i></span>
           </label>
         </div>
       </div>
-
-      <div class="toggle-row">
-        <div class="toggle-text">要标记每行来自哪个工作表吗？<small>开启后会新增“来源”列，例如：1月、2月</small></div>
-        <label class="toggle"><input type="checkbox" id="sheetAddSource" checked onchange="sheetToggleSource()"><span class="slider"></span></label>
+      <div class="toggle-row merge-join-key-row" id="sheetJoinKeyRow" style="display:none;">
+        <div class="toggle-text"><span class="merge-field-label">匹配字段</span><span id="sheetJoinKeyHint" class="merge-join-key-hint">自动检测</span></div>
+        <select id="sheetJoinKey" class="merge-select" onchange="sheetUpdateJoinKeyHint()"></select>
       </div>
-      <div id="sheetSourceBox" class="source-mode-box">
-        <div class="source-mode-options">
-          <label><input type="radio" name="sheetSourceMode" value="auto" checked onchange="sheetToggleSource()"> 使用原工作表名称（常用）</label>
-          <label><input type="radio" name="sheetSourceMode" value="custom" onchange="sheetToggleSource()"> 所有行使用同一个名称</label>
+
+      <div class="merge-header-settings">
+        <div class="option-section-title">表头</div>
+        <div class="toggle-row merge-header-count-row">
+          <div class="toggle-text"><span class="merge-field-label">表头行数</span></div>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <input type="number" id="sheetHeaderRows" class="merge-number-input" value="1" min="0" max="20" onchange="sheetHeaderChange()">
+            <span class="merge-unit">行</span>
+            <label class="merge-no-header">
+              <input type="checkbox" id="sheetNoHeader" onchange="sheetToggleNoHeader()"> 无表头
+            </label>
+          </div>
         </div>
-        <div id="sheetSourceCustom" style="display:none;">
-          <input type="text" id="sheetSourceText" class="source-custom-input" placeholder="例如：2026年5月门店数据">
+        <div class="toggle-row merge-header-key-row" id="sheetHeaderKeySetting" style="display:none;">
+          <div class="toggle-text"><span class="merge-field-label">字段名行</span></div>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <input type="number" id="sheetHeaderKeyRow" class="merge-number-input" value="1" min="1" max="20" onchange="sheetRefreshJoinKeyOptions()">
+            <span class="merge-unit">行</span>
+          </div>
         </div>
+        <div class="header-preview" id="sheetHeaderKeyExample" style="display:none;"></div>
       </div>
 
       <details class="advanced-settings">
-        <summary>高级设置（一般不用改）</summary>
+        <summary>更多设置</summary>
         <div class="advanced-settings-body">
           <div class="toggle-row">
-            <div class="toggle-text">忽略完全空白的行<small>建议保持开启</small></div>
+            <div class="toggle-text">添加来源列</div>
+            <label class="toggle"><input type="checkbox" id="sheetAddSource" checked onchange="sheetToggleSource()"><span class="slider"></span></label>
+          </div>
+          <div id="sheetSourceBox" class="source-mode-box">
+            <div class="source-mode-options">
+              <label><input type="radio" name="sheetSourceMode" value="auto" checked onchange="sheetToggleSource()"> 自动</label>
+              <label><input type="radio" name="sheetSourceMode" value="custom" onchange="sheetToggleSource()"> 自定义</label>
+            </div>
+            <div id="sheetSourceCustom" style="display:none;">
+              <input type="text" id="sheetSourceText" class="source-custom-input" placeholder="固定来源名称">
+            </div>
+          </div>
+
+          <div class="toggle-row">
+            <div class="toggle-text">忽略空白行</div>
             <label class="toggle"><input type="checkbox" id="sheetSkipEmpty" checked><span class="slider"></span></label>
           </div>
           <div class="toggle-row" id="sheetAlignByNameRow">
-            <div class="toggle-text">列顺序不一样时自动对齐<small>建议保持开启。例如两张表的“公司名称、金额”顺序相反，也能放对位置</small></div>
+            <div class="toggle-text">自动对齐列顺序</div>
             <label class="toggle"><input type="checkbox" id="sheetAlignByName" checked onchange="sheetUpdateHeaderGuidance()"><span class="slider"></span></label>
           </div>
-          <div class="toggle-row" id="sheetHeaderKeySetting" style="display:none;">
-            <div class="toggle-text">真正的列名在第几行？<small>只有开头有 2 行以上标题时才需要设置</small></div>
-            <div style="display:flex;align-items:center;gap:8px;">
-              <input type="number" id="sheetHeaderKeyRow" value="1" min="1" max="20" style="width:72px;padding:8px 12px;border:1px solid var(--gray-300);border-radius:8px;font-size:14px;color:var(--gray-700);outline:none;" onchange="sheetRefreshJoinKeyOptions()">
-              <span style="font-size:13px;color:var(--gray-500);">行</span>
-            </div>
-          </div>
-          <div class="option-help" id="sheetHeaderKeyExample" style="display:none;line-height:1.8;">
-            <strong>看原表判断：</strong><br>
-            第 1 行：2026 年销售汇总　← 大标题<br>
-            第 2 行：公司名称｜金额　← 真正的列名<br>
-            这种情况填写：开头标题 <strong>2</strong> 行，真正列名在第 <strong>2</strong> 行。
-          </div>
           <div class="toggle-row">
-            <div class="toggle-text">删除完全相同的数据行<small>只有整行内容都相同才会删除</small></div>
+            <div class="toggle-text">删除重复数据</div>
             <label class="toggle"><input type="checkbox" id="sheetDedupe"><span class="slider"></span></label>
           </div>
           <div class="toggle-row">
-            <div class="toggle-text">保留日期、百分比等显示格式<small>建议保持开启</small></div>
+            <div class="toggle-text">保留显示格式</div>
             <label class="toggle"><input type="checkbox" id="sheetKeepFmt" checked><span class="slider"></span></label>
           </div>
         </div>
@@ -3901,6 +4190,7 @@ async function multiHandleFiles(files, isFolder){
     document.getElementById('multiOptionsCard').style.display='';
     document.getElementById('multiResultCard').style.display='none';
     document.getElementById('multiFileSearchWrap').style.display='';
+    multiUpdateHeaderGuidance();
   }
   let msg='已读取 '+multiFiles.length+' 个文件';
   if(dupCount)msg+=', 跳过 '+dupCount+' 个重复文件';
@@ -4142,7 +4432,7 @@ function multiHeaderChange(){
   if(v<=0&&horizontal){
     input.value=1;
     document.getElementById('multiNoHeader').checked=false;
-    showToast('横向关联需要至少 1 行标题','info');
+    showToast('按字段匹配至少需要 1 行表头','info');
   }else if(v<=0){
     document.getElementById('multiNoHeader').checked=true;
     multiToggleNoHeader();
@@ -4181,10 +4471,63 @@ function multiToggleSource(){
   box.style.display=''; custom.style.display=rad.checked?'':'none';
 }
 
+function renderMergeHeaderPreview(target,data,label,headerRows,keyRow,noHeader){
+  if(!target)return;
+  if(noHeader||headerRows<=1){
+    target.style.display='none';
+    target.innerHTML='';
+    return;
+  }
+  if(!Array.isArray(data)||!data.length){
+    target.style.display='';
+    target.innerHTML='<div class="header-preview-empty">暂无表头预览</div>';
+    return;
+  }
+  const keyIndex=Math.min(headerRows,Math.max(1,parseInt(keyRow)||headerRows))-1;
+  const visibleRows=Math.min(data.length,Math.max(headerRows+1,3),6);
+  let html='<div class="header-preview-title"><span>表头预览</span><span class="header-preview-title-note">字段名：第 '+(keyIndex+1)+' 行</span></div>';
+  for(let ri=0;ri<visibleRows;ri++){
+    const values=Array.isArray(data[ri])?data[ri]:[];
+    let content=values.slice(0,10).map(value=>String(fmtCell(value)==null?'':fmtCell(value)).trim()).join(' ｜ ');
+    if(values.length>10)content+=' ｜ …';
+    if(!content)content='（空白）';
+    const isKey=ri===keyIndex;
+    const role=isKey?'字段名':'';
+    html+='<div class="header-preview-row '+(isKey?'is-key':'')+' '+(ri<headerRows?'is-header':'')+' '+(ri>=headerRows?'is-data':'')+'">'+
+      '<span class="header-preview-number">第 '+(ri+1)+' 行</span>'+
+      '<span class="header-preview-content" title="'+esc(content)+'">'+esc(content)+'</span>'+
+      (role?'<span class="header-preview-tag">'+role+'</span>':'')+
+      '</div>';
+  }
+  if(data.length>visibleRows)html+='<div class="header-preview-empty">仅显示前 '+visibleRows+' 行</div>';
+  target.innerHTML=html;
+  target.style.display='';
+}
+
+function multiRenderHeaderPreview(){
+  const target=document.getElementById('multiHeaderKeyExample');
+  if(!target)return;
+  let sampleFile=null,sampleSheet=null;
+  for(const file of multiFiles){
+    for(const sheet of (file.sheets||[])){
+      if(sheet.selected){ sampleFile=file; sampleSheet=sheet; break; }
+    }
+    if(sampleSheet)break;
+  }
+  if(!sampleSheet){
+    sampleFile=multiFiles[0]||null;
+    sampleSheet=sampleFile?.sheets?.[0]||null;
+  }
+  const headerRows=Math.max(0,parseInt(document.getElementById('multiHeaderRows')?.value)||0);
+  const keyRow=parseInt(document.getElementById('multiHeaderKeyRow')?.value)||headerRows||1;
+  const noHeader=document.getElementById('multiNoHeader')?.checked;
+  const label=sampleFile&&sampleSheet?(sampleFile.relPath||sampleFile.name)+' · '+sampleSheet.name:'';
+  renderMergeHeaderPreview(target,sampleSheet?.data,label,headerRows,keyRow,noHeader);
+}
+
 function multiUpdateHeaderGuidance(){
   const noHeader=document.getElementById('multiNoHeader')?.checked;
   const headerRows=Math.max(0,parseInt(document.getElementById('multiHeaderRows')?.value)||0);
-  const align=document.getElementById('multiAlignByName')?.checked;
   const horizontal=document.querySelector('input[name="multiMergeDirection"]:checked')?.value==='join';
   const simpleHelp=document.getElementById('multiHeaderSimpleHelp');
   const alignRow=document.getElementById('multiAlignByNameRow');
@@ -4193,19 +4536,20 @@ function multiUpdateHeaderGuidance(){
   const keyInput=document.getElementById('multiHeaderKeyRow');
   if(simpleHelp){
     simpleHelp.textContent=noHeader
-      ?'系统会把每一行都当作数据，不会单独保留列名'
+      ?'每一行都当作数据，不单独保留列名'
       :headerRows>1
-        ?'系统会保留开头 '+headerRows+' 行；请在高级设置确认真正的列名在哪一行'
-        :'最常见：第 1 行是“公司名称、金额”等列名，保持 1 即可';
+        ?'保留前 '+headerRows+' 行；第 '+Math.min(headerRows,Math.max(1,parseInt(keyInput?.value)||headerRows))+' 行作为字段名，数据从第 '+(headerRows+1)+' 行开始'
+        :'第 1 行作为字段名，数据从第 2 行开始';
   }
   if(alignRow)alignRow.style.display=noHeader||horizontal?'none':'';
-  const showKey=!noHeader&&(horizontal||!!align)&&headerRows>1;
+  const showKey=!noHeader&&headerRows>1;
   if(keySetting)keySetting.style.display=showKey?'':'none';
   if(keyExample)keyExample.style.display=showKey?'':'none';
   if(keyInput&&headerRows>0){
     keyInput.max=headerRows;
     if(parseInt(keyInput.value)>headerRows)keyInput.value=headerRows;
   }
+  multiRenderHeaderPreview();
 }
 
 function multiRefreshJoinKeyOptions(){
@@ -4225,18 +4569,19 @@ function multiRefreshJoinKeyOptions(){
   const names=Array.from(common||[]);
   select.innerHTML=names.length
     ?names.map(name=>`<option value="${esc(name)}">${esc(name)}</option>`).join('')
-    :'<option value="">没有共同列名</option>';
+    :'<option value="">没有共同字段</option>';
+  select.disabled=!names.length;
   if(names.includes(previous))select.value=previous;
   multiUpdateJoinKeyHint();
+  multiRenderHeaderPreview();
 }
 
 function multiUpdateJoinKeyHint(){
   const select=document.getElementById('multiJoinKey');
   const hint=document.getElementById('multiJoinKeyHint');
   if(!select||!hint)return;
-  hint.textContent=select.value
-    ?'已自动找到「'+select.value+'」；内容相同的数据会放到同一行'
-    :'没有找到每张表都有的列，请检查标题行或所选工作表';
+  hint.textContent=select.value?'已找到':'未找到共同字段';
+  hint.classList.toggle('is-error',!select.value);
 }
 
 function multiToggleMergeDirection(){
@@ -4245,12 +4590,10 @@ function multiToggleMergeDirection(){
   const appendChoice=document.getElementById('multiAppendChoice');
   const joinChoice=document.getElementById('multiJoinChoice');
   if(appendChoice){
-    appendChoice.style.borderColor=horizontal?'var(--gray-300)':'var(--primary)';
-    appendChoice.style.background=horizontal?'white':'var(--primary-light)';
+    appendChoice.classList.toggle('is-selected',!horizontal);
   }
   if(joinChoice){
-    joinChoice.style.borderColor=horizontal?'var(--primary)':'var(--gray-300)';
-    joinChoice.style.background=horizontal?'var(--primary-light)':'white';
+    joinChoice.classList.toggle('is-selected',horizontal);
   }
   const noHeader=document.getElementById('multiNoHeader');
   const source=document.getElementById('multiAddSource');
@@ -4301,7 +4644,7 @@ function multiBuildHorizontalJoin(allSheets,options){
   const headerKeyIdx=headerKeyRow-1;
   const joinKey=String(options?.joinKey||'').trim();
   const skipEmpty=options?.skipEmpty!==false;
-  if(!joinKey)throw new Error('请选择匹配列');
+  if(!joinKey)throw new Error('请选择匹配字段');
 
   const sheetInfos=allSheets.map(sh=>{
     const data=sh.data||[];
@@ -4313,7 +4656,7 @@ function multiBuildHorizontalJoin(allSheets,options){
       return {name,ci,rawHeaders};
     });
     const keyColumn=columns.find(column=>column.name===joinKey);
-    if(!keyColumn)throw new Error((sh.fileName||sh.sheetName||'所选工作表')+' 缺少匹配列「'+joinKey+'」');
+    if(!keyColumn)throw new Error((sh.fileName||sh.sheetName||'所选工作表')+' 缺少匹配字段「'+joinKey+'」');
     return {sh,data,columns,keyColumn};
   });
   if(!sheetInfos.length)return {headers:[],rows:[],headerRows_raw:[]};
@@ -4581,7 +4924,7 @@ function multiMerge(){
       }):multiBuildMergedResult(group.sheets))
     }));
   }catch(error){
-    showToast(error?.message||'横向关联失败','error');
+    showToast(error?.message||'按字段匹配失败','error');
     return;
   }
   const first=results[0];
@@ -4774,7 +5117,7 @@ function sheetHeaderChange(){
   if(v<=0&&horizontal){
     input.value=1;
     document.getElementById('sheetNoHeader').checked=false;
-    showToast('补到同一行需要至少 1 行标题','info');
+    showToast('按字段匹配至少需要 1 行表头','info');
   }else if(v<=0){
     document.getElementById('sheetNoHeader').checked=true;
     sheetToggleNoHeader();
@@ -4808,10 +5151,19 @@ function sheetToggleSource(){
   box.style.display=''; custom.style.display=rad.checked?'':'none';
 }
 
+function sheetRenderHeaderPreview(){
+  const target=document.getElementById('sheetHeaderKeyExample');
+  if(!target)return;
+  const sample=sheetData.find(sheet=>sheet.selected)||sheetData[0]||null;
+  const headerRows=Math.max(0,parseInt(document.getElementById('sheetHeaderRows')?.value)||0);
+  const keyRow=parseInt(document.getElementById('sheetHeaderKeyRow')?.value)||headerRows||1;
+  const noHeader=document.getElementById('sheetNoHeader')?.checked;
+  renderMergeHeaderPreview(target,sample?.data,sample?.name||'',headerRows,keyRow,noHeader);
+}
+
 function sheetUpdateHeaderGuidance(){
   const noHeader=document.getElementById('sheetNoHeader')?.checked;
   const headerRows=Math.max(0,parseInt(document.getElementById('sheetHeaderRows')?.value)||0);
-  const align=document.getElementById('sheetAlignByName')?.checked;
   const horizontal=document.querySelector('input[name="sheetMergeDirection"]:checked')?.value==='join';
   const simpleHelp=document.getElementById('sheetHeaderSimpleHelp');
   const alignRow=document.getElementById('sheetAlignByNameRow');
@@ -4820,19 +5172,20 @@ function sheetUpdateHeaderGuidance(){
   const keyInput=document.getElementById('sheetHeaderKeyRow');
   if(simpleHelp){
     simpleHelp.textContent=noHeader
-      ?'系统会把每一行都当作数据，不会单独保留列名'
+      ?'每一行都当作数据，不单独保留列名'
       :headerRows>1
-        ?'系统会保留开头 '+headerRows+' 行；请在高级设置确认真正的列名在哪一行'
-        :'最常见：第 1 行是“公司名称、金额”等列名，保持 1 即可';
+        ?'保留前 '+headerRows+' 行；第 '+Math.min(headerRows,Math.max(1,parseInt(keyInput?.value)||headerRows))+' 行作为字段名，数据从第 '+(headerRows+1)+' 行开始'
+        :'第 1 行作为字段名，数据从第 2 行开始';
   }
   if(alignRow)alignRow.style.display=noHeader||horizontal?'none':'';
-  const showKey=!noHeader&&(horizontal||!!align)&&headerRows>1;
+  const showKey=!noHeader&&headerRows>1;
   if(keySetting)keySetting.style.display=showKey?'':'none';
   if(keyExample)keyExample.style.display=showKey?'':'none';
   if(keyInput&&headerRows>0){
     keyInput.max=headerRows;
     if(parseInt(keyInput.value)>headerRows)keyInput.value=headerRows;
   }
+  sheetRenderHeaderPreview();
 }
 
 function sheetRefreshJoinKeyOptions(){
@@ -4851,18 +5204,19 @@ function sheetRefreshJoinKeyOptions(){
   const names=Array.from(common||[]);
   select.innerHTML=names.length
     ?names.map(name=>`<option value="${esc(name)}">${esc(name)}</option>`).join('')
-    :'<option value="">没有共同列名</option>';
+    :'<option value="">没有共同字段</option>';
+  select.disabled=!names.length;
   if(names.includes(previous))select.value=previous;
   sheetUpdateJoinKeyHint();
+  sheetRenderHeaderPreview();
 }
 
 function sheetUpdateJoinKeyHint(){
   const select=document.getElementById('sheetJoinKey');
   const hint=document.getElementById('sheetJoinKeyHint');
   if(!select||!hint)return;
-  hint.textContent=select.value
-    ?'已自动找到「'+select.value+'」；内容相同的数据会放到同一行'
-    :'没有找到所选工作表都有的列，请检查标题行或所选工作表';
+  hint.textContent=select.value?'已找到':'未找到共同字段';
+  hint.classList.toggle('is-error',!select.value);
 }
 
 function sheetToggleMergeDirection(){
@@ -4870,10 +5224,8 @@ function sheetToggleMergeDirection(){
   document.getElementById('sheetJoinKeyRow').style.display=horizontal?'':'none';
   const appendChoice=document.getElementById('sheetAppendChoice');
   const joinChoice=document.getElementById('sheetJoinChoice');
-  appendChoice.style.borderColor=horizontal?'var(--gray-300)':'var(--primary)';
-  appendChoice.style.background=horizontal?'white':'var(--primary-light)';
-  joinChoice.style.borderColor=horizontal?'var(--primary)':'var(--gray-300)';
-  joinChoice.style.background=horizontal?'var(--primary-light)':'white';
+  appendChoice.classList.toggle('is-selected',!horizontal);
+  joinChoice.classList.toggle('is-selected',horizontal);
   const noHeader=document.getElementById('sheetNoHeader');
   const source=document.getElementById('sheetAddSource');
   if(horizontal){
@@ -4922,7 +5274,7 @@ function sheetMerge(){
       headers=joined.headers;
       rows=joined.rows;
     }catch(error){
-      showToast(error?.message||'补到同一行失败','error');
+    showToast(error?.message||'按字段匹配失败','error');
       return;
     }
   }else if(headerRows>0 && alignByName){

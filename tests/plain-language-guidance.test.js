@@ -12,10 +12,16 @@ test('homepage describes tools by the result users want', () => {
   assert.match(html, /把一页中的多张回单分别裁出/);
 });
 
-test('spreadsheet settings mark common defaults and use recognizable examples', () => {
-  assert.match(html, /每个工作表开头有几行标题？/);
-  assert.match(html, /使用原工作表名称（常用）/);
-  assert.match(html, /列顺序不一样时自动对齐/);
+test('spreadsheet settings use compact labels and visual hierarchy', () => {
+  assert.match(html, /表头行数/);
+  assert.match(html, /name="sheetSourceMode" value="auto"[^>]*> 自动/);
+  assert.match(html, /自动对齐列顺序/);
+  assert.match(html, /字段名行/);
+  assert.match(html, /表头预览/);
+  assert.match(html, /\.merge-choice:hover/);
+  assert.match(html, /\.merge-choice\.is-selected/);
+  assert.match(html, /\.merge-settings-card \.toggle-text small \{ display: none; \}/);
+  assert.doesNotMatch(html, /相同编号或公司名称的数据放到同一行/);
   assert.match(html, /“部门”在 B 列就填 2/);
   assert.match(html, /相同部门会放进同一份/);
 });
