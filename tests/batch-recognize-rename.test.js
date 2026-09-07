@@ -35,10 +35,10 @@ test('PDF recognition checks the selected text layer before browser OCR', () => 
 });
 
 test('image recognition uses browser PaddleOCR before Tesseract and records the source', () => {
-  const start = html.indexOf('async function batchRecognizeOcr(crop,enhanced)');
+  const start = html.indexOf('async function batchRecognizeOcr(');
   const end = html.indexOf('\nasync function batchRecognizeStart()', start);
   const source = html.slice(start, end);
-  const paddle = source.indexOf('pdfSplitRunPaddleOcr(crop)');
+  const paddle = source.indexOf('pdfSplitRunPaddleOcr(crop,');
   const tesseract = source.indexOf('pdfSplitRunTesseractOcr(enhanced||crop');
   assert.ok(paddle >= 0, 'PaddleOCR should be attempted');
   assert.ok(tesseract > paddle, 'Tesseract should remain the final fallback');
@@ -55,6 +55,38 @@ test('browser PaddleOCR needs no credentials or local proxy', () => {
   assert.match(html, /textDetectionModelAsset:\{url:'\.\/ocr-models\/PP-OCRv5_mobile_det_onnx_infer\.tar'\}/);
   assert.match(html, /textRecognitionModelAsset:\{url:'\.\/ocr-models\/PP-OCRv5_mobile_rec_onnx_infer\.tar'\}/);
   assert.doesNotMatch(html, /baiduOcr|BAIDU_OCR|百度 OCR 设置|Secret Key|API Key|启动百度OCR服务\.command/);
+});
+
+test('PaddleOCR recognition scores are preserved for field validation', () => {
+  const start = html.indexOf('function pdfSplitPaddlePolyToBbox(');
+  const end = html.indexOf('\nasync function pdfSplitRunPaddleOcr(', start);
+  assert.ok(start >= 0 && end > start, 'PaddleOCR result adapter should exist');
+  const context = {};
+  vm.createContext(context);
+  vm.runInContext(`${html.slice(start, end)}\nthis.run=pdfSplitNormalizePaddleResult;`, context);
+
+  const result = context.run([{
+    items: [{
+      text: '甲公司',
+      score: 0.82,
+      poly: [[50, 70], [450, 70], [450, 145], [50, 145]]
+    }]
+  }]);
+
+  assert.deepEqual(Array.from(result.scores), [0.82]);
+});
+
+test('missing PaddleOCR scores are not treated as zero confidence', () => {
+  const start = html.indexOf('function batchRecognizeOcrResultCandidate(');
+  const end = html.indexOf('\nfunction batchRecognizeIsFieldResultSuspicious(', start);
+  assert.ok(start >= 0 && end > start, 'OCR candidate helper should exist');
+  const context = {
+    batchRecognizeCleanText: value => String(value || '').replace(/\s+/g, ' ').trim()
+  };
+  vm.createContext(context);
+  vm.runInContext(`${html.slice(start, end)}\nthis.run=batchRecognizeOcrResultCandidate;`, context);
+
+  assert.equal(context.run({ lines: ['甲公司'], scores: [null] }).confidence, null);
 });
 
 test('failed PaddleOCR initialization is cached so a batch falls back only once', () => {
@@ -78,13 +110,14 @@ test('online OCR retries alternate CDNs for PaddleOCR and Tesseract', () => {
 });
 
 function loadBatchRecognizeOcr(overrides = {}) {
-  const start = html.indexOf('async function batchRecognizeOcr(crop,enhanced)');
+  const start = html.indexOf('function batchRecognizeTesseractParameters(');
   const end = html.indexOf('\nasync function batchRecognizeStart()', start);
   assert.ok(start >= 0 && end > start, 'batchRecognizeOcr should exist');
   const context = {
     batchRecognizeCleanText: text => String(text || '').replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim(),
     pdfSplitRunPaddleOcr: async () => ({lines: [], error: 'Paddle unavailable'}),
     pdfSplitRunTesseractOcr: async () => ({lines: [], error: 'Tesseract unavailable'}),
+    batchRecognizeTesseractParameters: () => ({tessedit_pageseg_mode: '7', preserve_interword_spaces: '1'}),
     PDF_SPLIT_OCR_TIMEOUT_MS: 15000,
     pdfSplitWithTimeout: (task, timeoutMs, label) => {
       let timer = null;
@@ -147,6 +180,190 @@ test('OCR keeps normal phone-photo resolution and enlarges narrow text crops', (
   assert.ok(context.api.batchRecognizeCropScale(800, 120) <= 5);
   assert.match(html, /function batchRecognizeEnhanceCanvas\(/);
   assert.match(html, /batchRecognizeEnhanceCanvas\(crop\)/);
+});
+
+test('image OCR sends precise field crops to one PaddleOCR batch before fallback', async () => {
+  const start = html.indexOf('function batchRecognizeGetCropRect(');
+  const scaleStart = html.indexOf('function batchRecognizeCropScale(');
+  const end = html.indexOf('\nasync function invoiceRecognizeProcessFile(', start);
+  assert.ok(start >= 0 && end > start, 'image OCR coordinator should exist');
+
+  let pageCalls = 0;
+  let batchCalls = 0;
+  const context = {
+    PDF_SPLIT_OCR_TIMEOUT_MS: 100,
+    batchRecognizeCleanText: value => String(value || '').replace(/\s+/g, ' ').trim(),
+    pdfSplitWithTimeout: task => Promise.resolve(task(() => {})),
+    pdfSplitRunPaddleOcr: async () => {
+      pageCalls += 1;
+      return { lines: [] };
+    },
+    pdfSplitRunPaddleOcrBatch: async crops => {
+      batchCalls += 1;
+      assert.equal(crops.length, 2);
+      return [{ lines: ['甲公司'] }, { lines: ['2026'] }];
+    },
+    document: {
+      createElement: () => ({
+        width: 0,
+        height: 0,
+        getContext: () => ({ fillRect() {}, drawImage() {} })
+      })
+    }
+  };
+  vm.createContext(context);
+  vm.runInContext(`${html.slice(scaleStart, start)}\n${html.slice(start, end)}\nthis.run=batchRecognizeOcrImageFields;`, context);
+
+  const result = await context.run(
+    { width: 1000, height: 1000 },
+    [
+      { x: 0.1, y: 0.1, w: 0.25, h: 0.08 },
+      { x: 0.1, y: 0.3, w: 0.2, h: 0.08 }
+    ]
+  );
+
+  assert.equal(pageCalls, 0);
+  assert.equal(batchCalls, 1);
+  assert.deepEqual(Array.from(result.texts), ['甲公司', '2026']);
+  assert.deepEqual(Array.from(result.sources), ['PaddleOCR', 'PaddleOCR']);
+});
+
+test('suspicious batch OCR output is rechecked with single-image PaddleOCR', async () => {
+  const start = html.indexOf('function batchRecognizeGetCropRect(');
+  const scaleStart = html.indexOf('function batchRecognizeCropScale(');
+  const end = html.indexOf('\nasync function invoiceRecognizeProcessFile(', start);
+  assert.ok(start >= 0 && end > start, 'image OCR coordinator should exist');
+
+  let localCalls = 0;
+  const context = {
+    PDF_SPLIT_OCR_TIMEOUT_MS: 100,
+    batchRecognizeCleanText: value => String(value || '').replace(/\s+/g, ' ').trim(),
+    pdfSplitWithTimeout: task => Promise.resolve(task(() => {})),
+    pdfSplitRunPaddleOcr: async () => {
+      localCalls += 1;
+      return { lines: ['甲公司'] };
+    },
+    pdfSplitRunPaddleOcrBatch: async () => {
+      return [{ lines: ['wa'] }];
+    },
+    pdfSplitRunTesseractOcr: async () => ({ lines: [] }),
+    pdfSplitPaddleResultForCrop: result => ({
+      lines: (result.words || []).map(word => word.text)
+    }),
+    document: {
+      createElement: () => ({
+        getContext: () => ({
+          fillRect() {},
+          drawImage() {},
+          getImageData() { return { data: new Uint8ClampedArray(4) }; },
+          putImageData() {}
+        })
+      })
+    }
+  };
+  vm.createContext(context);
+  vm.runInContext(`${html.slice(scaleStart, end)}\nthis.run=batchRecognizeOcrImageFields;`, context);
+
+  const result = await context.run(
+    { width: 1000, height: 1000 },
+    [{ x: 0.1, y: 0.1, w: 0.25, h: 0.08 }]
+  );
+
+  assert.equal(localCalls, 1);
+  assert.deepEqual(Array.from(result.texts), ['甲公司']);
+  assert.deepEqual(Array.from(result.sources), ['PaddleOCR']);
+});
+
+test('invalid enhanced OCR output retries the original crop', async () => {
+  let tesseractCalls = 0;
+  const run = loadBatchRecognizeOcr({
+    pdfSplitRunPaddleOcr: async () => ({ lines: [] }),
+    pdfSplitRunTesseractOcr: async () => {
+      tesseractCalls += 1;
+      return { lines: [tesseractCalls === 1 ? 'wa' : '甲公司'] };
+    }
+  });
+  const result = await run(
+    { width: 800, height: 100 },
+    { width: 800, height: 100 },
+    text => text !== 'wa'
+  );
+
+  assert.equal(tesseractCalls, 2);
+  assert.equal(result.text, '甲公司');
+  assert.equal(result.source, 'Tesseract');
+});
+
+test('batch PaddleOCR failure falls back to single-image PaddleOCR', async () => {
+  let singleCalls = 0;
+  const start = html.indexOf('function batchRecognizeGetCropRect(');
+  const scaleStart = html.indexOf('function batchRecognizeCropScale(');
+  const end = html.indexOf('\nasync function invoiceRecognizeProcessFile(', start);
+  assert.ok(start >= 0 && end > start, 'image OCR coordinator should exist');
+  const context = {
+    PDF_SPLIT_OCR_TIMEOUT_MS: 100,
+    batchRecognizeCleanText: value => String(value || '').replace(/\s+/g, ' ').trim(),
+    pdfSplitWithTimeout: task => Promise.resolve(task(() => {})),
+    pdfSplitRunPaddleOcr: async () => {
+      singleCalls += 1;
+      return { lines: ['甲公司'] };
+    },
+    pdfSplitRunPaddleOcrBatch: async () => [{ lines: [], error: 'batch failed' }],
+    pdfSplitRunTesseractOcr: async () => ({ lines: [] }),
+    document: {
+      createElement: () => ({
+        width: 0,
+        height: 0,
+        getContext: () => ({
+          fillRect() {},
+          drawImage() {},
+          getImageData() { return { data: new Uint8ClampedArray(4) }; },
+          putImageData() {}
+        })
+      })
+    }
+  };
+  vm.createContext(context);
+  vm.runInContext(`${html.slice(scaleStart, end)}\nthis.run=batchRecognizeOcrImageFields;`, context);
+
+  const result = await context.run(
+    { width: 1000, height: 1000 },
+    [{ x: 0.1, y: 0.1, w: 0.25, h: 0.08 }]
+  );
+
+  assert.equal(singleCalls, 1);
+  assert.deepEqual(Array.from(result.texts), ['甲公司']);
+  assert.deepEqual(Array.from(result.sources), ['PaddleOCR']);
+});
+
+test('primary OCR crops preserve the exact selected text box', () => {
+  const start = html.indexOf('function batchRecognizeGetCropRect(');
+  const scaleStart = html.indexOf('function batchRecognizeCropScale(');
+  const end = html.indexOf('\nfunction batchRecognizeEnhanceCanvas(', start);
+  assert.ok(start >= 0 && end > start, 'crop helpers should exist');
+
+  let drawArgs = null;
+  const context = {
+    document: {
+      createElement: () => ({
+        width: 0,
+        height: 0,
+        getContext: () => ({
+          fillRect() {},
+          drawImage(...args) { drawArgs = args; }
+        })
+      })
+    }
+  };
+  vm.createContext(context);
+  vm.runInContext(`${html.slice(scaleStart, end)}\nthis.run=batchRecognizeCropCanvas;`, context);
+  context.run({ width: 1000, height: 1000 }, { x: 0.4, y: 0.4, w: 0.1, h: 0.04 });
+
+  assert.ok(drawArgs, 'crop should draw from the source canvas');
+  assert.equal(drawArgs[1], 400, 'crop should start at the selected box');
+  assert.equal(drawArgs[2], 400, 'crop should start at the selected box');
+  assert.equal(drawArgs[3], 100, 'crop should preserve the selected box width');
+  assert.equal(drawArgs[4], 40, 'crop should preserve the selected box height');
 });
 
 test('batch recognize rename accepts pasted files only while its page is active', () => {
@@ -252,5 +469,5 @@ test('download still packages the original files after OCR naming', () => {
   const source = html.slice(start, end);
   assert.match(source, /await f\.arrayBuffer\(\)/);
   assert.match(source, /buildZip\(entries\)/);
-  assert.match(source, /pdfSplitRunPaddleOcr\(crop\)/);
+  assert.match(source, /pdfSplitRunPaddleOcr\(crop(?:,registerCancel)?\)/);
 });
