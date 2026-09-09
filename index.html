@@ -995,6 +995,192 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     border-radius: 3px;
   }
   .merge-choice-visual.join i:last-child { border-color: var(--primary); }
+  .merge-direction-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 8px;
+  }
+  .merge-direction-heading .option-section-title { margin-bottom: 0; }
+  .merge-help-trigger {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    min-height: 30px;
+    padding: 5px 10px;
+    border: 1px solid var(--primary-light);
+    border-radius: 7px;
+    background: var(--primary-bg);
+    color: var(--primary);
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 600;
+    transition: background .18s ease, border-color .18s ease, transform .18s ease;
+  }
+  .merge-help-trigger:hover {
+    border-color: var(--primary);
+    background: white;
+    transform: translateY(-1px);
+  }
+  .merge-direction-help-modal[hidden] { display: none; }
+  .merge-direction-help-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 10002;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    background: rgba(17, 24, 39, .48);
+  }
+  .merge-direction-help-dialog {
+    display: flex;
+    flex-direction: column;
+    width: min(760px, 100%);
+    max-height: min(88vh, 760px);
+    overflow: hidden;
+    border: 1px solid var(--gray-200);
+    border-radius: 16px;
+    background: white;
+    box-shadow: 0 20px 70px rgba(0, 0, 0, .24);
+  }
+  .merge-direction-help-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 18px 20px 16px;
+    background: linear-gradient(135deg, var(--primary), #6B8E6B);
+    color: white;
+  }
+  .merge-direction-help-kicker {
+    margin-bottom: 4px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: .08em;
+    opacity: .78;
+  }
+  .merge-direction-help-header h3 {
+    margin: 0;
+    font-size: 20px;
+    line-height: 1.35;
+  }
+  .merge-direction-help-header p {
+    margin: 5px 0 0;
+    color: rgba(255, 255, 255, .84);
+    font-size: 13px;
+    line-height: 1.5;
+  }
+  .merge-direction-help-close {
+    flex: 0 0 auto;
+    width: 30px;
+    height: 30px;
+    border: 1px solid rgba(255, 255, 255, .38);
+    border-radius: 50%;
+    background: rgba(255, 255, 255, .16);
+    color: white;
+    cursor: pointer;
+    font-size: 18px;
+    line-height: 1;
+  }
+  .merge-direction-help-close:hover { background: rgba(255, 255, 255, .28); }
+  .merge-direction-help-body { overflow: auto; padding: 18px 20px 20px; }
+  .merge-direction-help-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+  }
+  .merge-direction-help-card {
+    min-width: 0;
+    padding: 14px;
+    border: 1px solid var(--gray-200);
+    border-radius: 12px;
+    background: var(--gray-50);
+  }
+  .merge-direction-help-card.append { border-top: 3px solid #5D8662; }
+  .merge-direction-help-card.join { border-top: 3px solid var(--primary); }
+  .merge-direction-help-card-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .merge-direction-help-card-title { color: var(--gray-800); font-size: 15px; font-weight: 700; }
+  .merge-direction-help-badge {
+    padding: 3px 7px;
+    border-radius: 6px;
+    background: var(--primary-bg);
+    color: var(--primary);
+    font-size: 11px;
+    font-weight: 700;
+    white-space: nowrap;
+  }
+  .merge-direction-help-card p {
+    min-height: 42px;
+    margin: 7px 0 0;
+    color: var(--gray-600);
+    font-size: 12px;
+    line-height: 1.6;
+  }
+  .merge-help-flow { margin-top: 12px; }
+  .merge-help-sources {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    align-items: center;
+    gap: 6px;
+  }
+  .merge-help-source { min-width: 0; }
+  .merge-help-table-label {
+    display: block;
+    margin-bottom: 4px;
+    color: var(--gray-500);
+    font-size: 10px;
+    font-weight: 700;
+    text-align: center;
+  }
+  .merge-help-table {
+    width: 100%;
+    table-layout: fixed;
+    border-collapse: collapse;
+    overflow: hidden;
+    border: 1px solid var(--gray-200);
+    border-radius: 6px;
+    background: white;
+    color: var(--gray-600);
+    font-size: 10px;
+  }
+  .merge-help-table th,
+  .merge-help-table td {
+    max-width: 0;
+    overflow: hidden;
+    padding: 5px 4px;
+    border: 1px solid var(--gray-200);
+    text-align: left;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .merge-help-table th { background: #EEF3FA; color: var(--gray-700); font-weight: 700; }
+  .merge-help-table .is-added { background: #E8F4EA; color: #36563D; font-weight: 700; }
+  .merge-help-plus,
+  .merge-help-arrow {
+    color: var(--primary);
+    font-size: 17px;
+    font-weight: 700;
+    text-align: center;
+  }
+  .merge-help-arrow { margin: 6px 0; }
+  .merge-help-result { max-width: 92%; margin: 0 auto; }
+  .merge-direction-help-note {
+    margin-top: 14px;
+    padding: 10px 12px;
+    border-radius: 9px;
+    background: var(--primary-bg);
+    color: var(--gray-600);
+    font-size: 12px;
+    line-height: 1.6;
+  }
+  .merge-direction-help-note strong { color: var(--gray-800); }
   .merge-settings-card .merge-join-key-row {
     min-height: 52px;
     padding: 12px 0;
@@ -1155,6 +1341,20 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   body.theme-dark .merge-field-label { color: #D0D4EC; }
   body.theme-dark .merge-choice-badge { background: #252836; color: #9A9EB6; }
   body.theme-dark .merge-choice.is-selected .merge-choice-badge { background: #1E2030; color: #96A8FF; }
+  body.theme-dark .merge-help-trigger { background: #2A3050; border-color: #7B8FF7; color: #96A8FF; }
+  body.theme-dark .merge-help-trigger:hover { background: #31385D; }
+  body.theme-dark .merge-direction-help-dialog { background: #1E2030; border-color: #3A3E52; }
+  body.theme-dark .merge-direction-help-card { background: #181A22; border-color: #2A2D40; }
+  body.theme-dark .merge-direction-help-card-title,
+  body.theme-dark .merge-direction-help-note strong { color: #D0D4EC; }
+  body.theme-dark .merge-direction-help-card p,
+  body.theme-dark .merge-direction-help-note { color: #B4B8D0; }
+  body.theme-dark .merge-direction-help-badge { background: #2A3050; color: #96A8FF; }
+  body.theme-dark .merge-help-table { background: #1E2030; color: #B4B8D0; border-color: #3A3E52; }
+  body.theme-dark .merge-help-table th,
+  body.theme-dark .merge-help-table td { border-color: #3A3E52; }
+  body.theme-dark .merge-help-table th { background: #2A2D40; color: #D0D4EC; }
+  body.theme-dark .merge-help-table .is-added { background: #1D3A28; color: #9DE0AE; }
   body.theme-dark .merge-number-input,
   body.theme-dark .merge-select { background: #1E2030; color: #D0D4EC; border-color: #3A3E52; }
   body.theme-dark .merge-no-header:hover { background: #252836; border-color: #3A3E52; color: #D0D4EC; }
@@ -1641,6 +1841,188 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   }
   .split-field-output-row .toggle-text { font-size: 13px; font-weight: 600; }
   .split-field-output-row .nup-options { justify-content: flex-end; }
+  .split-settings-card {
+    padding: 20px 24px 24px;
+  }
+  .split-settings-card .card-title {
+    margin-bottom: 4px;
+    font-size: 17px;
+  }
+  .split-settings-intro {
+    margin: 0 0 2px;
+    color: var(--gray-500);
+    font-size: 12px;
+    line-height: 1.6;
+  }
+  .split-config-section {
+    padding: 14px 0 16px;
+    border-bottom: 1px solid var(--gray-100);
+  }
+  .split-option-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 8px;
+  }
+  .split-option-heading .option-section-title { margin-bottom: 0; }
+  .split-option-hint {
+    color: var(--gray-400);
+    font-size: 12px;
+  }
+  .split-mode-choice-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+  .split-mode-choice.nup-option {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 68px;
+    padding: 11px 13px;
+    border: 1px solid var(--gray-200);
+    border-radius: 10px;
+    background: var(--gray-50);
+    color: var(--gray-800);
+    text-align: left;
+  }
+  .split-mode-choice.nup-option:hover {
+    border-color: var(--primary-light);
+    background: var(--primary-bg);
+    color: var(--gray-800);
+  }
+  .split-mode-choice.nup-option.active {
+    border-color: var(--primary);
+    background: var(--primary-bg);
+    color: var(--gray-800);
+    box-shadow: 0 0 0 3px rgba(var(--primary-rgb), .10);
+  }
+  .split-mode-choice.nup-option.active .split-mode-choice-icon { color: white !important; }
+  .split-mode-choice.nup-option.active .split-mode-choice-copy { color: var(--gray-800) !important; }
+  .split-mode-choice.nup-option.active .split-mode-choice-copy small { color: var(--gray-500) !important; }
+  .split-mode-choice.nup-option.active .split-mode-choice-tag { color: var(--primary) !important; }
+  .split-mode-choice-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 30px;
+    width: 30px;
+    height: 30px;
+    border-radius: 8px;
+    background: var(--gray-200);
+    color: var(--gray-600);
+    font-size: 17px;
+    font-weight: 700;
+  }
+  .split-mode-choice.active .split-mode-choice-icon {
+    background: var(--primary);
+    color: white;
+  }
+  .split-mode-choice-copy {
+    display: flex;
+    flex: 1;
+    min-width: 0;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .split-mode-choice-copy strong { font-size: 14px; line-height: 1.35; }
+  .split-mode-choice-copy small { color: var(--gray-500); font-size: 11px; line-height: 1.4; }
+  .split-mode-choice-tag {
+    flex: 0 0 auto;
+    padding: 2px 5px;
+    border-radius: 5px;
+    background: white;
+    color: var(--primary);
+    font-size: 10px;
+    font-weight: 700;
+  }
+  .split-output-section {
+    display: block;
+    margin: 0;
+    padding: 14px 0 16px;
+    border: 0;
+    border-bottom: 1px solid var(--gray-100);
+    border-radius: 0;
+    background: transparent;
+  }
+  .split-output-choice-grid {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .split-output-choice.nup-option {
+    flex: 1 1 220px;
+    min-height: 38px;
+    padding: 8px 12px;
+    text-align: left;
+  }
+  .split-output-choice.nup-option.active { box-shadow: 0 0 0 2px rgba(var(--primary-rgb), .10); }
+  .split-setting-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    min-height: 52px;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--gray-100);
+  }
+  .split-setting-copy { min-width: 0; flex: 1; }
+  .split-setting-label {
+    display: block;
+    color: var(--gray-700);
+    font-size: 14px;
+    font-weight: 600;
+    line-height: 1.35;
+  }
+  .split-setting-copy small {
+    display: block;
+    margin-top: 2px;
+    color: var(--gray-400);
+    font-size: 11px;
+    line-height: 1.4;
+  }
+  .split-setting-control {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    flex: 0 0 auto;
+  }
+  .split-number-input {
+    width: 76px;
+    padding: 8px 10px;
+    border: 1px solid var(--gray-300);
+    border-radius: 8px;
+    color: var(--gray-700);
+    font-size: 14px;
+    outline: none;
+    text-align: center;
+  }
+  .split-number-input:focus {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(var(--primary-rgb), .12);
+  }
+  .split-setting-unit { color: var(--gray-500); font-size: 12px; }
+  .split-settings-card .split-order-help-trigger {
+    margin-left: 6px;
+    padding: 2px 6px;
+    border: 1px solid var(--primary-light);
+    border-radius: 5px;
+    background: var(--primary-bg);
+    color: var(--primary);
+    cursor: pointer;
+    font-size: 11px;
+  }
+  .split-settings-card .btn-row { margin-top: 16px; }
+  body.theme-dark .split-mode-choice.nup-option,
+  body.theme-dark .split-output-choice.nup-option { background: #1E2030; border-color: #2A2D40; color: #D0D4EC; }
+  body.theme-dark .split-mode-choice.nup-option:hover,
+  body.theme-dark .split-mode-choice.nup-option.active,
+  body.theme-dark .split-output-choice.nup-option.active { background: #2A3050; border-color: #7B8FF7; color: #D0D4EC; }
+  body.theme-dark .split-mode-choice-icon { background: #252836; color: #B4B8D0; }
+  body.theme-dark .split-mode-choice.active .split-mode-choice-icon { background: #7B8FF7; color: white; }
+  body.theme-dark .split-mode-choice-tag { background: #1E2030; color: #96A8FF; }
+  body.theme-dark .split-number-input { background: #1E2030; color: #D0D4EC; border-color: #3A3E52; }
 
   /* ===== Scroll to Top ===== */
   .scroll-top-btn {
@@ -1697,9 +2079,22 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     .upload-support-summary span { font-size: 11px; padding: 4px 8px; }
     .tool-header h3 { font-size: 17px; }
     .merge-settings-card { padding: 18px; }
+    .merge-direction-heading { align-items: flex-start; flex-direction: column; gap: 6px; }
+    .merge-help-trigger { align-self: flex-start; }
     .merge-choice-grid { grid-template-columns: 1fr; }
     .merge-choice { min-height: 62px; }
     .merge-choice-title { font-size: 14px; }
+    .merge-direction-help-modal { padding: 12px; }
+    .merge-direction-help-dialog { max-height: 92vh; border-radius: 14px; }
+    .merge-direction-help-header { padding: 15px 16px 13px; }
+    .merge-direction-help-header h3 { font-size: 18px; }
+    .merge-direction-help-body { padding: 14px 16px 16px; }
+    .merge-direction-help-grid { grid-template-columns: 1fr; }
+    .split-settings-card { padding: 18px; }
+    .split-mode-choice-grid { grid-template-columns: 1fr; }
+    .split-option-heading { align-items: flex-start; flex-direction: column; gap: 3px; }
+    .split-setting-row { align-items: flex-start; flex-direction: column; gap: 7px; }
+    .split-setting-control { align-self: flex-start; }
     .merge-header-count-row { align-items: flex-start; flex-direction: column; gap: 8px; }
     .merge-header-count-row > div:last-child { flex-wrap: wrap; }
     .header-preview-title { align-items: flex-start; flex-direction: column; gap: 3px; }
@@ -2092,6 +2487,99 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       <div id="previewPanelBody" style="padding:12px 16px;overflow:auto;height:calc(100% - 44px);"></div>
     </div>
 
+    <!-- ===== 合并方式说明悬浮窗口 ===== -->
+    <div id="multiMergeHelpModal" class="merge-direction-help-modal" hidden aria-hidden="true" onclick="closeMultiMergeHelp(event)">
+      <div class="merge-direction-help-dialog" role="dialog" aria-modal="true" aria-labelledby="multiMergeHelpTitle" onclick="event.stopPropagation()">
+        <div class="merge-direction-help-header">
+          <div>
+            <div class="merge-direction-help-kicker">合并方式说明</div>
+            <h3 id="multiMergeHelpTitle">到底是行变多，还是列变多？</h3>
+            <p>看合并后表格是“往下长”，还是“向右长”。</p>
+          </div>
+          <button type="button" class="merge-direction-help-close" onclick="closeMultiMergeHelp()" aria-label="关闭说明">×</button>
+        </div>
+        <div class="merge-direction-help-body">
+          <div class="merge-direction-help-grid">
+            <section class="merge-direction-help-card append">
+              <div class="merge-direction-help-card-head">
+                <span class="merge-direction-help-card-title">上下追加</span>
+                <span class="merge-direction-help-badge">行变多</span>
+              </div>
+              <p>每个文件的列相同，把一个文件的内容接到另一个文件的下面，表格会变长。</p>
+              <div class="merge-help-flow">
+                <div class="merge-help-sources">
+                  <div class="merge-help-source">
+                    <span class="merge-help-table-label">文件 1</span>
+                    <table class="merge-help-table" aria-label="上下追加的文件一示例">
+                      <thead><tr><th>姓名</th><th>金额</th></tr></thead>
+                      <tbody><tr><td>小王</td><td>100</td></tr></tbody>
+                    </table>
+                  </div>
+                  <span class="merge-help-plus" aria-hidden="true">＋</span>
+                  <div class="merge-help-source">
+                    <span class="merge-help-table-label">文件 2</span>
+                    <table class="merge-help-table" aria-label="上下追加的文件二示例">
+                      <thead><tr><th>姓名</th><th>金额</th></tr></thead>
+                      <tbody><tr><td>小李</td><td>80</td></tr></tbody>
+                    </table>
+                  </div>
+                </div>
+                <div class="merge-help-arrow" aria-hidden="true">↓</div>
+                <div class="merge-help-result">
+                  <span class="merge-help-table-label">合并后：行数增加</span>
+                  <table class="merge-help-table" aria-label="上下追加后的示例">
+                    <thead><tr><th>姓名</th><th>金额</th></tr></thead>
+                    <tbody>
+                      <tr><td>小王</td><td>100</td></tr>
+                      <tr class="is-added"><td>小李</td><td>80</td></tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+              <div class="merge-direction-help-note"><strong>适合：</strong>1 月表、2 月表的列相同，想合成一张长表。</div>
+            </section>
+
+            <section class="merge-direction-help-card join">
+              <div class="merge-direction-help-card-head">
+                <span class="merge-direction-help-card-title">按字段匹配</span>
+                <span class="merge-direction-help-badge">列变多</span>
+              </div>
+              <p>用共同字段（例如“公司名称”）找到同一条记录，把其他文件的信息补到右边。</p>
+              <div class="merge-help-flow">
+                <div class="merge-help-sources">
+                  <div class="merge-help-source">
+                    <span class="merge-help-table-label">文件 1</span>
+                    <table class="merge-help-table" aria-label="按字段匹配的文件一示例">
+                      <thead><tr><th>公司名称</th><th>销售额</th></tr></thead>
+                      <tbody><tr><td>甲公司</td><td>100</td></tr></tbody>
+                    </table>
+                  </div>
+                  <span class="merge-help-plus" aria-hidden="true">＋</span>
+                  <div class="merge-help-source">
+                    <span class="merge-help-table-label">文件 2</span>
+                    <table class="merge-help-table" aria-label="按字段匹配的文件二示例">
+                      <thead><tr><th>公司名称</th><th>负责人</th></tr></thead>
+                      <tbody><tr><td>甲公司</td><td>小陈</td></tr></tbody>
+                    </table>
+                  </div>
+                </div>
+                <div class="merge-help-arrow" aria-hidden="true">→</div>
+                <div class="merge-help-result">
+                  <span class="merge-help-table-label">合并后：列数增加</span>
+                  <table class="merge-help-table" aria-label="按字段匹配后的示例">
+                    <thead><tr><th>公司名称</th><th>销售额</th><th class="is-added">负责人</th></tr></thead>
+                    <tbody><tr><td>甲公司</td><td>100</td><td class="is-added">小陈</td></tr></tbody>
+                  </table>
+                </div>
+              </div>
+              <div class="merge-direction-help-note"><strong>适合：</strong>两张表都有“公司名称”，想给同一家公司补充更多字段。</div>
+            </section>
+          </div>
+          <div class="merge-direction-help-note"><strong>记忆：</strong>上下接，行数增加；按字段左右补信息，列数增加。</div>
+        </div>
+      </div>
+    </div>
+
     <!-- Sheet Selection -->
     <div class="card" id="multiSheetCard" style="display:none;">
       <div class="card-title">
@@ -2112,7 +2600,10 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       <div class="card-title"><span class="icon">⚙️</span> 合并设置</div>
 
       <div class="merge-config-section merge-direction-section">
-        <div class="option-section-title">合并方式</div>
+        <div class="merge-direction-heading">
+          <div class="option-section-title">合并方式</div>
+          <button type="button" class="merge-help-trigger" id="multiMergeHelpTrigger" onclick="openMultiMergeHelp()" aria-controls="multiMergeHelpModal" aria-expanded="false">💡 看懂“行增加”和“列增加”</button>
+        </div>
         <div class="merge-choice-grid">
           <label id="multiAppendChoice" class="merge-choice is-selected">
             <input type="radio" name="multiMergeDirection" value="append" checked onchange="multiToggleMergeDirection()">
@@ -2153,8 +2644,8 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         <div class="header-preview" id="multiHeaderKeyExample" style="display:none;"></div>
       </div>
 
-      <details class="advanced-settings">
-        <summary>更多设置</summary>
+      <details class="advanced-settings" open>
+        <summary>⚙️ 高级设置（输出、来源、去重等）</summary>
         <div class="advanced-settings-body">
           <div class="toggle-row">
             <div class="toggle-text">输出工作表</div>
@@ -2797,10 +3288,10 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 
     <!-- Page Setup -->
     <div class="card" id="splitPageSetupCard" style="display:none;">
-      <div class="card-title"><span class="icon">🖨️</span> 打印页面设置</div>
-      <div style="font-size:13px;color:var(--gray-500);margin-bottom:10px;">默认按 A4、纵向、每页 50 行处理；平时不用改。</div>
+      <div class="card-title"><span class="icon">🖨️</span> 打印设置</div>
+      <div style="font-size:12px;color:var(--gray-500);margin-bottom:10px;">默认 A4 · 纵向 · 每页 50 行；不确定时不用修改。</div>
       <details class="advanced-settings">
-        <summary>修改打印页面设置</summary>
+        <summary>调整打印设置</summary>
         <div class="advanced-settings-body">
           <div class="toggle-row">
             <div class="toggle-text">纸张大小</div>
@@ -2862,65 +3353,94 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     </div>
 
     <!-- Split Options -->
-    <div class="card" id="splitOptionsCard" style="display:none;">
-      <div class="card-title"><span class="icon">⚙️</span> 选择拆分方式</div>
+    <div class="card split-settings-card" id="splitOptionsCard" style="display:none;">
+      <div class="card-title"><span class="icon">⚙️</span> 拆分设置</div>
+      <div class="split-settings-intro">先选一种拆分方式，再填写下面的数字。</div>
 
-      <div class="toggle-row">
-        <div class="toggle-text">按什么规则拆分？<small>先选择按字段拆分，还是按固定行数拆分</small></div>
-        <div class="nup-options" id="splitRuleOptions">
-          <button class="nup-option active" data-mode="column" onclick="splitSetMode('column')">按某列内容分开</button>
-          <button class="nup-option" data-mode="rows" onclick="splitSetMode('rows')">每 N 行分一份</button>
+      <div class="split-config-section">
+        <div class="split-option-heading">
+          <div class="option-section-title">1. 怎么拆？</div>
+          <span class="split-option-hint">同一部门放一份，或按行数切开</span>
+        </div>
+        <div class="split-mode-choice-grid" id="splitRuleOptions">
+          <button type="button" class="nup-option split-mode-choice active" data-mode="column" onclick="splitSetMode('column')">
+            <span class="split-mode-choice-icon" aria-hidden="true">▦</span>
+            <span class="split-mode-choice-copy"><strong>按列内容拆分</strong><small>相同部门会放进同一份</small></span>
+            <span class="split-mode-choice-tag">常用</span>
+          </button>
+          <button type="button" class="nup-option split-mode-choice" data-mode="rows" onclick="splitSetMode('rows')">
+            <span class="split-mode-choice-icon" aria-hidden="true">↕</span>
+            <span class="split-mode-choice-copy"><strong>按固定行数拆分</strong><small>每 N 行切成一份</small></span>
+          </button>
         </div>
       </div>
 
-      <div class="split-field-output-row" id="splitFieldOutputRow">
-        <div class="toggle-text">字段拆分后怎么输出？<small>只对“按某列内容分开”生效；可以放在一个 Sheet 中，也可以每个字段一个 Sheet</small></div>
-        <div class="nup-options" id="splitFieldOutputOptions">
-          <button class="nup-option active" data-mode="column" onclick="splitSetMode('column')">一个 Sheet 内排版</button>
-          <button class="nup-option" data-mode="sheets" onclick="splitSetMode('sheets')">每个字段一个 Sheet</button>
+      <div class="split-config-section split-output-section" id="splitFieldOutputRow">
+        <div class="split-option-heading">
+          <div class="option-section-title">2. 字段拆分后的输出</div>
+          <span class="split-option-hint">只在“按列内容拆分”时可选</span>
+        </div>
+        <div class="split-output-choice-grid" id="splitFieldOutputOptions">
+          <button type="button" class="nup-option split-output-choice active" data-mode="column" onclick="splitSetMode('column')">一个 Sheet 内排版</button>
+          <button type="button" class="nup-option split-output-choice" data-mode="sheets" onclick="splitSetMode('sheets')">每个字段一个 Sheet</button>
         </div>
       </div>
 
-      <div class="toggle-row" id="splitColRow">
-        <div class="toggle-text" id="splitColLabel">根据第几列的内容分组？<small>例如“部门”在 B 列就填 2；相同部门会放进同一份</small></div>
-        <input type="number" id="splitCol" value="1" min="1" max="50" style="width:72px;padding:8px 12px;border:1px solid var(--gray-300);border-radius:8px;font-size:14px;color:var(--gray-700);outline:none;">
+      <div class="split-setting-row" id="splitColRow">
+        <div class="split-setting-copy" id="splitColLabel"><span class="split-setting-label">根据哪一列分组？</span><small>例如：“部门”在 B 列就填 2</small></div>
+        <div class="split-setting-control">
+          <input type="number" class="split-number-input" id="splitCol" value="1" min="1" max="50">
+          <span class="split-setting-unit" id="splitColUnit">列</span>
+        </div>
       </div>
 
-      <div class="toggle-row">
-        <div class="toggle-text">每份小表 / 每个 Sheet 要重复保留开头几行？<small>通常第 1 行是列名，保持 1 即可</small></div>
-        <input type="number" id="splitHeaderRows" value="1" min="0" max="10" style="width:72px;padding:8px 12px;border:1px solid var(--gray-300);border-radius:8px;font-size:14px;color:var(--gray-700);outline:none;">
+      <div class="split-setting-row">
+        <div class="split-setting-copy"><span class="split-setting-label">每份保留表头几行？</span><small>一般填 1</small></div>
+        <div class="split-setting-control">
+          <input type="number" class="split-number-input" id="splitHeaderRows" value="1" min="0" max="10">
+          <span class="split-setting-unit">行</span>
+        </div>
       </div>
 
-      <div class="toggle-row">
-        <div class="toggle-text">把第一行做成整行大标题吗？<small>开启后会跨所有列合并为一个单元格</small></div>
+      <div class="split-setting-row">
+        <div class="split-setting-copy"><span class="split-setting-label">第一行做大标题</span><small>需要时开启</small></div>
         <label class="toggle"><input type="checkbox" id="splitMergeFirst" onchange="splitToggleMerge()"><span class="slider"></span></label>
       </div>
 
-      <div class="toggle-row" id="splitFirstRowHRow" style="display:none;">
-        <div class="toggle-text">第一行行高<small>合并后的第一行行高（磅）</small></div>
-        <input type="number" id="splitFirstRowH" value="20" min="8" max="60" style="width:72px;padding:8px 12px;border:1px solid var(--gray-300);border-radius:8px;font-size:14px;color:var(--gray-700);outline:none;">
-      </div>
-
-      <div class="toggle-row" id="splitTablesPerPageRow">
-        <div class="toggle-text">打印时一页放几张小表？<small>默认 4 张；下面可以选择排列顺序</small></div>
-        <input type="number" id="splitTablesPerPage" value="4" min="1" max="12" style="width:72px;padding:8px 12px;border:1px solid var(--gray-300);border-radius:8px;font-size:14px;color:var(--gray-700);outline:none;">
-      </div>
-
-      <div class="toggle-row" id="splitOrderRow">
-        <div class="toggle-text">小表排列顺序<button type="button" class="split-order-help-trigger" id="splitOrderHelpTrigger" onclick="openSplitOrderHelp()" aria-haspopup="dialog" aria-controls="splitOrderHelpModal" aria-expanded="false">❔ 看图说明</button><small>裁剪同一位置选第一项；最后不足的表格会保留空白位置；需要原来的分页方式选第二项</small></div>
-        <div class="nup-options" id="splitOrderOptions">
-          <button class="nup-option active" data-order="position" onclick="splitSetOrder('position')">按位置（裁剪友好）</button>
-          <button class="nup-option" data-order="page" onclick="splitSetOrder('page')">按原来顺序</button>
+      <div class="split-setting-row" id="splitFirstRowHRow" style="display:none;">
+        <div class="split-setting-copy"><span class="split-setting-label">大标题行高</span><small>单位：磅</small></div>
+        <div class="split-setting-control">
+          <input type="number" class="split-number-input" id="splitFirstRowH" value="20" min="8" max="60">
+          <span class="split-setting-unit">磅</span>
         </div>
       </div>
 
-      <div class="toggle-row">
-        <div class="toggle-text">表格框线<small>给每个小表格添加边框</small></div>
+      <div class="split-setting-row" id="splitTablesPerPageRow">
+        <div class="split-setting-copy"><span class="split-setting-label">每页放几张小表？</span><small>打印布局</small></div>
+        <div class="split-setting-control">
+          <input type="number" class="split-number-input" id="splitTablesPerPage" value="4" min="1" max="12">
+          <span class="split-setting-unit">张</span>
+        </div>
+      </div>
+
+      <div class="split-setting-row" id="splitOrderRow">
+        <div class="split-setting-copy">
+          <span class="split-setting-label">排列顺序<button type="button" class="split-order-help-trigger" id="splitOrderHelpTrigger" onclick="openSplitOrderHelp()" aria-haspopup="dialog" aria-controls="splitOrderHelpModal" aria-expanded="false">❔ 看图说明</button></span>
+          <small>同位置裁剪选“按位置” · 保留空白位置</small>
+        </div>
+        <div class="nup-options" id="splitOrderOptions">
+          <button type="button" class="nup-option active" data-order="position" onclick="splitSetOrder('position')">按位置（裁剪友好）</button>
+          <button type="button" class="nup-option" data-order="page" onclick="splitSetOrder('page')">按原来顺序</button>
+        </div>
+      </div>
+
+      <div class="split-setting-row">
+        <div class="split-setting-copy"><span class="split-setting-label">表格框线</span></div>
         <label class="toggle"><input type="checkbox" id="splitBorders" checked><span class="slider"></span></label>
       </div>
 
-      <div class="toggle-row">
-        <div class="toggle-text">表格样式<small>用底色区分表头和数据行</small></div>
+      <div class="split-setting-row">
+        <div class="split-setting-copy"><span class="split-setting-label">表格样式</span></div>
         <label class="toggle"><input type="checkbox" id="splitStyles" checked><span class="slider"></span></label>
       </div>
 
@@ -3494,6 +4014,7 @@ function showTool(tool) {
   else if (tool === 'flist') { document.getElementById('page-flist').style.display = ''; }
 }
 function showHome() {
+  closeMultiMergeHelp();
   document.getElementById('page-home').style.display = '';
   document.getElementById('page-multi').style.display = 'none';
   document.getElementById('page-sheet').style.display = 'none';
@@ -4359,6 +4880,28 @@ function multiTogglePreview(fi,si){
   panel.style.display='';
 }
 function closePreview(){ document.getElementById('previewPanel').style.display='none'; document.getElementById('previewPanelBody').innerHTML=''; currentPreviewKey=null; }
+function openMultiMergeHelp(){
+  const modal=document.getElementById('multiMergeHelpModal');
+  if(!modal)return;
+  modal.hidden=false;
+  modal.classList.add('show');
+  modal.setAttribute('aria-hidden','false');
+  const trigger=document.getElementById('multiMergeHelpTrigger');
+  trigger?.setAttribute('aria-expanded','true');
+  modal.querySelector('.merge-direction-help-close')?.focus();
+}
+function closeMultiMergeHelp(event){
+  const modal=document.getElementById('multiMergeHelpModal');
+  if(!modal)return;
+  if(event&&event.target&&event.target.id!=='multiMergeHelpModal')return;
+  const wasOpen=!modal.hidden;
+  modal.hidden=true;
+  modal.classList.remove('show');
+  modal.setAttribute('aria-hidden','true');
+  const trigger=document.getElementById('multiMergeHelpTrigger');
+  trigger?.setAttribute('aria-expanded','false');
+  if(wasOpen&&!event)trigger?.focus();
+}
 let dragPanel=null, dragX=0, dragY=0;
 function startDragPanel(e){
   if(e.target.tagName==='BUTTON')return; // 不拦截关闭按钮
@@ -5031,6 +5574,7 @@ function multiReset(){
   multiInput.value='';
   multiFolderInput.value='';
   setUploadClearVisible('multiClearBtn', false);
+  closeMultiMergeHelp();
   closePreview();
   showToast('已清空，可以重新上传','info');
   window.scrollTo({top:0,behavior:'smooth'});
@@ -9632,15 +10176,19 @@ function splitSetMode(mode) {
   document.querySelectorAll('#splitFieldOutputOptions .nup-option').forEach(b => b.classList.toggle('active', b.dataset.mode === outputMode));
   const label = document.getElementById('splitColLabel');
   const inp = document.getElementById('splitCol');
+  const unit = document.getElementById('splitColUnit');
   if (splitMode === 'column') {
-    label.innerHTML = '根据第几列的内容分组？<small>例如“部门”在 B 列就填 2；相同部门会放进同一份</small>';
+    label.innerHTML = '<span class="split-setting-label">根据哪一列分组？</span><small>例如：“部门”在 B 列就填 2</small>';
     inp.value = 1; inp.min = 1;
+    if (unit) unit.textContent = '列';
   } else if (splitMode === 'rows') {
-    label.innerHTML = '每份放多少行数据？<small>不计算上面重复保留的标题行</small>';
+    label.innerHTML = '<span class="split-setting-label">每份多少行？</span><small>不含重复的表头</small>';
     inp.value = 10; inp.min = 1;
+    if (unit) unit.textContent = '行';
   } else {
-    label.innerHTML = '按哪一列的字段值拆分？<small>例如“部门”在 B 列填 2；相同字段值会进入同一个 Sheet，空白字段放入“空白” Sheet</small>';
+    label.innerHTML = '<span class="split-setting-label">根据哪一列生成 Sheet？</span><small>例如：“部门”在 B 列就填 2</small>';
     inp.value = 1; inp.min = 1;
+    if (unit) unit.textContent = '列';
   }
   const isSheetMode = splitMode === 'sheets';
   const fieldOutputRow = document.getElementById('splitFieldOutputRow');
@@ -10342,6 +10890,7 @@ document.addEventListener('keydown', e => {
   if(e.key==='Escape'){
     closeChangelog();
     closeSplitOrderHelp();
+    closeMultiMergeHelp();
   }
 });
 
