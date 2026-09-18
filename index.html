@@ -2909,7 +2909,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         <div class="toggle-text">一张导出页面里放几页内容？<small>保持“1页1个”就是原大小；选择更多适合缩小打印</small></div>
         <div class="nup-options" id="nupOptions">
           <button class="nup-option active" data-nup="1" onclick="setNup(1)">1页1个</button>
-          <button class="nup-option" data-nup="2" onclick="setNup(2)">1页2个</button>
+          <button class="nup-option" data-nup="2" onclick="setNup(2)">1页2个（上下）</button>
           <button class="nup-option" data-nup="4" onclick="setNup(4)">1页4个</button>
           <button class="nup-option" data-nup="6" onclick="setNup(6)">1页6个</button>
           <button class="nup-option" data-nup="9" onclick="setNup(9)">1页9个</button>
@@ -5939,6 +5939,23 @@ function sheetClearAll(){
 // TOOL 3: PDF MERGE
 // ==========================================
 let pdfNup = 1; // default 1 page per sheet
+function pdfNupPageNeedsRaster(metadata) {
+  return !metadata || Boolean(
+    metadata.isPureXfa ||
+    metadata.hasVisualAnnotations ||
+    metadata.hasOptionalContentGroups
+  );
+}
+function pdfGetNupLayout(nup) {
+  const layoutMap = {
+    // WPS 常见的“两页合一”默认按纵向上下排列，适合 A4 纵向文档。
+    2: { cols: 1, rows: 2, pageW: 595, pageH: 842 },
+    4: { cols: 2, rows: 2, pageW: 842, pageH: 595 },
+    6: { cols: 3, rows: 2, pageW: 842, pageH: 595 },
+    9: { cols: 3, rows: 3, pageW: 842, pageH: 595 }
+  };
+  return layoutMap[nup] || layoutMap[4];
+}
 function pdfGetMergePreviewSource(index, sourcePages, nup) {
   if (nup !== 1 || !Array.isArray(sourcePages) || !sourcePages[index]) return null;
   const source = sourcePages[index];
@@ -6258,6 +6275,36 @@ async function pdfRenderPageRaster(bytes, pageNumber, docCache, scale = 2) {
   };
 }
 
+async function pdfGetNupPageMetadata(bytes, pageNumber, docCache) {
+  if (!window.pdfjsLib) return null;
+  const cache = docCache || new Map();
+  let doc = cache.get(bytes);
+  if (!doc) {
+    doc = await window.pdfjsLib.getDocument(pdfPreviewDocumentOptions(bytes)).promise;
+    cache.set(bytes, doc);
+  }
+  const page = await doc.getPage(pageNumber);
+  const isPureXfa = Boolean(doc.isPureXfa || page.isPureXfa);
+  if (isPureXfa) return { isPureXfa: true, hasVisualAnnotations: false, hasOptionalContentGroups: false };
+
+  const annotations = typeof page.getAnnotations === 'function'
+    ? await page.getAnnotations({ intent: 'display' })
+    : [];
+  const hasVisualAnnotations = Array.isArray(annotations) && annotations.some(annotation => {
+    const subtype = annotation?.subtype || annotation?.type;
+    return subtype !== 'Link';
+  });
+  let hasOptionalContentGroups = false;
+  if (!hasVisualAnnotations) {
+    const optionalContentConfig = await pdfPreviewGetOptionalContentConfig(doc);
+    const groups = optionalContentConfig && typeof optionalContentConfig.getGroups === 'function'
+      ? optionalContentConfig.getGroups()
+      : null;
+    hasOptionalContentGroups = Boolean(groups && Object.keys(groups).length);
+  }
+  return { isPureXfa, hasVisualAnnotations, hasOptionalContentGroups };
+}
+
 async function pdfShowCanvasPreview(bytes, titleText, key, pageNumbers) {
   const panel = document.getElementById('pdfPreviewPanel');
   if (currentPdfPreviewIndex === key && panel.style.display !== 'none') { closePdfPreview(); return; }
@@ -6369,12 +6416,9 @@ async function pdfMerge() {
       const srcPages = srcDoc.getPages();
       const newDoc = await PDFLib.PDFDocument.create();
       const nupRasterDocCache = new Map();
+      const nupPageMetadataCache = new Map();
 
-      const layoutMap = { 2: [2,1], 4: [2,2], 6: [3,2], 9: [3,3] };
-      const [cols, rows] = layoutMap[pdfNup] || [2, 2];
-
-      // A4 landscape
-      const pageW = 842, pageH = 595;
+      const { cols, rows, pageW, pageH } = pdfGetNupLayout(pdfNup);
       const margin = 28, gap = 14;
       const cellW = (pageW - margin * 2 - gap * (cols - 1)) / cols;
       const cellH = (pageH - margin * 2 - gap * (rows - 1)) / rows;
@@ -6390,7 +6434,26 @@ async function pdfMerge() {
 
           const source = pdfMergeSourcePages[srcIdx];
           let embeddedImage = null;
+          let shouldRaster = false;
           if (source && window.pdfjsLib) {
+            let pageMetadataCache = nupPageMetadataCache.get(source.data);
+            if (!pageMetadataCache) {
+              pageMetadataCache = new Map();
+              nupPageMetadataCache.set(source.data, pageMetadataCache);
+            }
+            let metadata = pageMetadataCache.get(source.pageNumber);
+            if (metadata === undefined) {
+              try {
+                metadata = await pdfGetNupPageMetadata(source.data, source.pageNumber, nupRasterDocCache);
+              } catch (e) {
+                console.warn('PDF 页面特征读取失败，改用安全栅格化路径', e);
+                metadata = null;
+              }
+              pageMetadataCache.set(source.pageNumber, metadata);
+            }
+            shouldRaster = pdfNupPageNeedsRaster(metadata);
+          }
+          if (shouldRaster) {
             try {
               const raster = await pdfRenderPageRaster(source.data, source.pageNumber, nupRasterDocCache, 2);
               embeddedImage = await newDoc.embedPng(raster.bytes);
