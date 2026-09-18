@@ -53,6 +53,46 @@ test('one-up merge preview uses the original source page bytes', () => {
   assert.equal(context.fn(1, sourcePages, 2), null, 'n-up output must keep using the composed PDF');
 });
 
+test('two-up PDF merge uses a portrait A4 page with the two source pages stacked vertically', () => {
+  const layoutStart = html.indexOf('function pdfGetNupLayout(');
+  const layoutEnd = html.indexOf('\nfunction pdfGetMergePreviewSource', layoutStart);
+  const mergeStart = html.indexOf('async function pdfMerge()');
+  const mergeEnd = html.indexOf('\nfunction pdfDownload()', mergeStart);
+
+  assert.ok(layoutStart >= 0 && layoutEnd > layoutStart, 'PDF n-up layout helper should exist');
+  assert.ok(mergeStart >= 0 && mergeEnd > mergeStart, 'PDF merge implementation should exist');
+
+  const context = {};
+  vm.runInNewContext(`${html.slice(layoutStart, layoutEnd)}\nthis.fn = pdfGetNupLayout;`, context);
+  const layout = context.fn(2);
+  assert.equal(layout.cols, 1);
+  assert.equal(layout.rows, 2);
+  assert.equal(layout.pageW, 595);
+  assert.equal(layout.pageH, 842);
+  assert.match(html.slice(mergeStart, mergeEnd), /pdfGetNupLayout\(pdfNup\)/);
+});
+
+test('n-up PDF merge keeps the fast vector path for ordinary pages and rasterizes visual overlays only', () => {
+  const helperStart = html.indexOf('function pdfNupPageNeedsRaster(');
+  const helperEnd = html.indexOf('\nfunction pdfGetMergePreviewSource', helperStart);
+  const mergeStart = html.indexOf('async function pdfMerge()');
+  const mergeEnd = html.indexOf('\nfunction pdfDownload()', mergeStart);
+
+  assert.ok(helperStart >= 0 && helperEnd > helperStart, 'n-up raster decision helper should exist');
+  assert.ok(mergeStart >= 0 && mergeEnd > mergeStart, 'PDF merge implementation should exist');
+
+  const context = {};
+  vm.runInNewContext(`${html.slice(helperStart, helperEnd)}\nthis.fn = pdfNupPageNeedsRaster;`, context);
+  assert.equal(context.fn({ isPureXfa: false, hasVisualAnnotations: false, hasOptionalContentGroups: false }), false);
+  assert.equal(context.fn({ isPureXfa: false, hasVisualAnnotations: true, hasOptionalContentGroups: false }), true);
+  assert.equal(context.fn({ isPureXfa: false, hasVisualAnnotations: false, hasOptionalContentGroups: true }), true);
+  assert.equal(context.fn(null), true, 'unknown metadata should keep the safe raster fallback');
+
+  const mergeSource = html.slice(mergeStart, mergeEnd);
+  assert.match(mergeSource, /pdfNupPageNeedsRaster\(/);
+  assert.match(mergeSource, /embedPdf\(srcDoc, \[srcIdx\]\)/);
+});
+
 test('PDF preview enables XFA and renders form layers over the page canvas', () => {
   const optionsStart = html.indexOf('function pdfPreviewDocumentOptions(');
   const optionsEnd = html.indexOf('\nasync function pdfShowCanvasPreview', optionsStart);
@@ -102,7 +142,7 @@ test('one-up merge thumbnails use the same original-page renderer as the full pr
   assert.match(mergeSource, /<img src="\$\{thumbnailUrl\}/);
 });
 
-test('n-up merge composition rasterizes original pages before placing them', () => {
+test('n-up merge composition keeps a raster fallback for pages with visual overlays', () => {
   const mergeStart = html.indexOf('async function pdfMerge()');
   const mergeEnd = html.indexOf('\nfunction pdfDownload()', mergeStart);
 
