@@ -870,11 +870,6 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   }
   .preview-table tr:hover { background: var(--gray-50); }
   .preview-label { font-size: 13px; color: var(--gray-500); margin-bottom: 8px; }
-  .split-cut-guide td {
-    background: #FFF1EF; color: #A7352D; font-weight: 700;
-    border-bottom: 2px dashed #C54135 !important;
-  }
-  body.theme-dark .split-cut-guide td { background: #392A32; color: #FFAD9E; border-bottom-color: #FF8C79 !important; }
 
   /* ===== Options ===== */
   .toggle-row {
@@ -3431,7 +3426,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       <div class="split-setting-row" id="splitOrderRow">
         <div class="split-setting-copy">
           <span class="split-setting-label">排列顺序<button type="button" class="split-order-help-trigger" id="splitOrderHelpTrigger" onclick="openSplitOrderHelp()" aria-haspopup="dialog" aria-controls="splitOrderHelpModal" aria-expanded="false">❔ 看图说明</button></span>
-          <small>同位置裁剪选“按位置” · 统一裁剪线并保留空白位置</small>
+          <small>同位置裁剪选“按位置” · 保留空白位置</small>
         </div>
         <div class="nup-options" id="splitOrderOptions">
           <button type="button" class="nup-option active" data-order="position" onclick="splitSetOrder('position')">按位置（裁剪友好）</button>
@@ -3459,7 +3454,6 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       <div class="card-title"><span class="icon">✅</span> 拆分完成</div>
       <div class="result-stats" id="splitStats"></div>
       <div class="preview-label">👁 拆分预览（按当前拆分方式显示）</div>
-      <div id="splitCutGuideInfo" style="display:none;font-size:12px;color:var(--gray-500);margin-bottom:8px;">✂ 红色虚线是裁剪线；每页都在相同的行数位置，导出的 Excel 也会显示。</div>
       <div class="preview-table-wrap" style="max-height:400px;">
         <div id="splitPreviewTable"></div>
       </div>
@@ -3824,7 +3818,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
           <div class="split-order-crop-result"><span>✂️ 裁剪最上面</span><strong>1 → 5 → 9 → …</strong></div>
         </section>
       </div>
-      <div class="split-order-help-tip"><strong>简单判断：</strong>想把同一位置的纸集中裁剪，就选“按位置”；想让每一页内部保持 1、2、3、4 的连续顺序，就选“按原来顺序”。每个裁剪位置在所有页面占相同行数，短表自动补空白；长表放不下会提示调整设置。最后一页不足 4 个表格时，空出的位置也会保留。</div>
+      <div class="split-order-help-tip"><strong>简单判断：</strong>想把同一位置的纸集中裁剪，就选“按位置”；想让每一页内部保持 1、2、3、4 的连续顺序，就选“按原来顺序”。如果最后一页不足 4 个表格，空出的位置会保留，不会重新挤压版式。</div>
     </div>
   </div>
 </div>
@@ -10233,31 +10227,6 @@ function splitBuildPageGroups(tableGroups, tablesPerPage, order = 'position') {
   return pages;
 }
 
-// Give each physical slot the same height on every page, so no cut crosses a table.
-function splitBuildCutLayout(pageGroupsList, headerRows, rowsPerPage) {
-  if (!pageGroupsList.length) return null;
-  const slotCount = pageGroupsList[0].length;
-  const minimumSlotRows = Array(slotCount).fill(1);
-  for (const pageGroups of pageGroupsList) {
-    for (let slot = 0; slot < slotCount; slot++) {
-      const group = pageGroups[slot];
-      if (group != null) minimumSlotRows[slot] = Math.max(minimumSlotRows[slot], headerRows + group.length);
-    }
-  }
-  const requiredRows = minimumSlotRows.reduce((sum, count) => sum + count, 0);
-  if (requiredRows > rowsPerPage) return { requiredRows, slotRows: [], cutRows: [] };
-  const spareRows = rowsPerPage - requiredRows;
-  const eachSlot = Math.floor(spareRows / slotCount);
-  const slotRows = minimumSlotRows.map((count, slot) => count + eachSlot + (slot < spareRows % slotCount ? 1 : 0));
-  const cutRows = [];
-  let endRow = 0;
-  for (let slot = 0; slot < slotCount - 1; slot++) {
-    endRow += slotRows[slot];
-    cutRows.push(endRow);
-  }
-  return { requiredRows, slotRows, cutRows };
-}
-
 function splitSetMode(mode) {
   splitMode = ['column', 'rows', 'sheets'].includes(mode) ? mode : 'column';
   if (splitMergedData) {
@@ -10295,12 +10264,7 @@ function splitSetMode(mode) {
   });
 }
 function splitSetOrder(order) {
-  const nextOrder = order === 'page' ? 'page' : 'position';
-  if (nextOrder !== splitOrder && splitMergedData && splitMergedData.mode !== 'sheets') {
-    splitMergedData = null;
-    document.getElementById('splitResultCard').style.display = 'none';
-  }
-  splitOrder = nextOrder;
+  splitOrder = order === 'page' ? 'page' : 'position';
   document.querySelectorAll('#splitOrderOptions .nup-option').forEach(b => b.classList.toggle('active', b.dataset.order === splitOrder));
 }
 function splitSetPaper(p) {
@@ -10513,7 +10477,7 @@ function splitExecute() {
 
   const headerRows = splitReadInt('splitHeaderRows', 1, 0);
   const tablesPerPage = splitReadInt('splitTablesPerPage', 4);
-  const rowsPerPage = splitReadInt('splitRowsPerPage', 50);
+  const rowsPerPage = splitReadInt('splitRowsPerPage', 52);
   const rowHeightVal = parseFloat(document.getElementById('splitRowHeight').value) || 12;
   const mergeFirst = document.getElementById('splitMergeFirst').checked;
   const firstRowH = mergeFirst ? (parseFloat(document.getElementById('splitFirstRowH').value) || 20) : rowHeightVal;
@@ -10547,7 +10511,6 @@ function splitExecute() {
       '<div class="stat-item"><div class="stat-value">' + (colIdx + 1) + '</div><div class="stat-label">拆分字段列</div></div>' +
       '<div class="stat-item"><div class="stat-value">' + headerRows + '</div><div class="stat-label">重复表头行数</div></div>';
     splitRenderFieldSheetPreview(sheets);
-    document.getElementById('splitCutGuideInfo').style.display = 'none';
     document.getElementById('splitResultCard').style.display = '';
     showToast('拆分完成！共 ' + sheets.length + ' 个 Sheet，' + dataRows.length + ' 行数据', 'success');
     document.getElementById('splitResultCard').scrollIntoView({ behavior: 'smooth' });
@@ -10576,36 +10539,47 @@ function splitExecute() {
   }
   if (!tableGroups.length) { showToast('没有可拆分的数据', 'error'); return; }
 
-  const pageGroupsList = splitBuildPageGroups(tableGroups, tablesPerPage, splitOrder);
-  const cutLayout = splitBuildCutLayout(pageGroupsList, headerRows, rowsPerPage);
-  if (!cutLayout.slotRows.length) {
-    splitMergedData = null;
-    document.getElementById('splitResultCard').style.display = 'none';
-    showToast('每页至少需要 ' + cutLayout.requiredRows + ' 行才能完整放下这些小表；请增加每页行数或减少每页小表数', 'error');
-    return;
-  }
-
-  // ---- Build output rows with aligned physical cut positions ----
+  // ---- Build output rows with even distribution per page ----
   const outRows = [];
   const rowHeights = [];
   const isBlankRow = []; // track which rows are blank gaps (for preview)
   const isHeaderRow = []; // track which rows are header rows (for styling)
   let currentRow = 0;
-  const appendBlankRows = (count, matchTitleHeight = false) => {
+
+  const pageGroupsList = splitBuildPageGroups(tableGroups, tablesPerPage, splitOrder);
+  const averageGroupRows = Math.max(1, Math.ceil(dataRows.length / tableGroups.length));
+  const emptySlotRows = Math.min(rowsPerPage, headerRows + averageGroupRows);
+  const appendBlankRows = count => {
     for (let b = 0; b < count; b++) {
       outRows[currentRow] = [];
       for (let c = 0; c < maxCols; c++) outRows[currentRow][c] = '';
-      rowHeights[currentRow] = b === 0 && matchTitleHeight ? firstRowH : rowHeightVal;
+      rowHeights[currentRow] = rowHeightVal;
       isBlankRow[currentRow] = true;
       isHeaderRow[currentRow] = false;
       currentRow++;
     }
   };
   for (const pageGroups of pageGroupsList) {
+    // Calculate total rows used by tables on this page
+    let totalTableRows = 0;
+    for (const g of pageGroups) totalTableRows += g == null ? emptySlotRows : headerRows + g.length;
+
+    // Calculate gaps: evenly distribute remaining rows between tables
+    const gaps = pageGroups.length - 1;
+    let blankAlloc = [];
+    if (gaps > 0) {
+      const available = Math.max(0, rowsPerPage - totalTableRows);
+      const base = Math.floor(available / gaps);
+      let extra = available % gaps;
+      blankAlloc = Array.from({ length: gaps }, (_, i) => base + (i < extra ? 1 : 0));
+    }
+
+    // Write tables and gaps
     for (let gi = 0; gi < pageGroups.length; gi++) {
       const group = pageGroups[gi];
       if (group == null) {
-        appendBlankRows(cutLayout.slotRows[gi], mergeFirst && headerRows > 0);
+        // Keep the physical slot even when the source has no fourth table.
+        appendBlankRows(emptySlotRows);
       } else {
         // Header rows
         for (let hr = 0; hr < headerRows; hr++) {
@@ -10625,16 +10599,27 @@ function splitExecute() {
           isHeaderRow[currentRow] = false;
           currentRow++;
         }
-        appendBlankRows(cutLayout.slotRows[gi] - headerRows - group.length);
+      }
+      // Gap rows (blank, to fill the page evenly)
+      if (gi < blankAlloc.length && blankAlloc[gi] > 0) {
+        appendBlankRows(blankAlloc[gi]);
+      }
+    }
+    // If last page has fewer tables than tablesPerPage, fill remaining rows to reach rowsPerPage
+    // (so the page boundary is consistent)
+    if (currentRow % rowsPerPage !== 0) {
+      const fillTo = (Math.floor(currentRow / rowsPerPage) + 1) * rowsPerPage;
+      while (currentRow < fillTo) {
+        outRows[currentRow] = [];
+        for (let c = 0; c < maxCols; c++) outRows[currentRow][c] = '';
+        rowHeights[currentRow] = rowHeightVal;
+        isBlankRow[currentRow] = true;
+        currentRow++;
       }
     }
   }
 
-  const cutAfterRows = new Set();
-  for (let page = 0; page < pageGroupsList.length; page++) {
-    for (const cutRow of cutLayout.cutRows) cutAfterRows.add(page * rowsPerPage + cutRow);
-  }
-  splitMergedData = { rows: outRows, rowHeights, isBlankRow, isHeaderRow, headerRows, mergeFirst, maxCols, tableCount: tableGroups.length, totalRows: currentRow, pages: pageGroupsList.length, rowsPerPage, cutAfterRows: Array.from(cutAfterRows) };
+  splitMergedData = { rows: outRows, rowHeights, isBlankRow, isHeaderRow, headerRows, mergeFirst, maxCols, tableCount: tableGroups.length, totalRows: currentRow, pages: Math.ceil(currentRow / rowsPerPage) };
 
   document.getElementById('splitStats').innerHTML =
     '<div class="stat-item"><div class="stat-value">' + tableGroups.length + '</div><div class="stat-label">拆分表格数</div></div>' +
@@ -10655,13 +10640,9 @@ function splitExecute() {
       for (let c = 0; c < maxCols; c++) th += '<td>' + esc(fmtCell(outRows[i][c] || '')) + '</td>';
       th += '</tr>';
     }
-    if (cutAfterRows.has(i + 1)) {
-      th += '<tr class="split-cut-guide"><td colspan="' + maxCols + '">✂ 裁剪线 · 本页第 ' + ((i + 1) % rowsPerPage) + ' 行后</td></tr>';
-    }
   }
   th += '</tbody></table>';
   document.getElementById('splitPreviewTable').innerHTML = th;
-  document.getElementById('splitCutGuideInfo').style.display = cutAfterRows.size ? '' : 'none';
   document.getElementById('splitResultCard').style.display = '';
   showToast('拆分完成！共 ' + tableGroups.length + ' 个表格，' + splitMergedData.pages + ' 页', 'success');
   document.getElementById('splitResultCard').scrollIntoView({ behavior: 'smooth' });
@@ -10802,7 +10783,8 @@ function splitExport() {
     splitExportFieldSheets(fileName);
     return;
   }
-  const { rows, rowHeights, mergeFirst, maxCols, headerRows, isBlankRow, isHeaderRow, rowsPerPage, cutAfterRows } = splitMergedData;
+  const { rows, rowHeights, mergeFirst, maxCols, headerRows, isBlankRow, isHeaderRow } = splitMergedData;
+  const rowsPerPage = parseInt(document.getElementById('splitRowsPerPage').value) || 52;
   const addBorders = document.getElementById('splitBorders').checked;
   const addStyles = document.getElementById('splitStyles').checked;
   const stdH = parseFloat(document.getElementById('splitRowHeight').value) || 12;
@@ -10871,27 +10853,10 @@ function splitExport() {
   // Merge first row of each table
   if (mergeFirst && headerRows > 0 && maxCols > 1) {
     for (let r = 0; r < rowHeights.length; r++) {
-      if (isHeaderRow[r] && rowHeights[r] !== stdH) {
+      if (rowHeights[r] !== stdH) {
         ws.mergeCells(r + 1, 1, r + 1, maxCols);
         ws.getRow(r + 1).getCell(1).alignment = { horizontal: 'center', vertical: 'middle' };
       }
-    }
-  }
-
-  // Draw the same printable cut guides on every page, even when table borders are off.
-  for (let i = 0; i < cutAfterRows.length; i++) {
-    const cutRow = cutAfterRows[i];
-    const row = ws.getRow(cutRow);
-    if (isBlankRow[cutRow - 1]) {
-      const labelCell = row.getCell(1);
-      labelCell.value = '✂ 沿虚线裁剪';
-      labelCell.font = { color: { argb: 'FFC54135' }, size: 9, italic: true };
-    }
-    for (let c = 1; c <= maxCols; c++) {
-      const cell = row.getCell(c);
-      cell.border = Object.assign({}, cell.border || {}, {
-        bottom: { style: 'mediumDashed', color: { argb: 'FFC54135' } }
-      });
     }
   }
 
