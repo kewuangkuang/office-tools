@@ -42,8 +42,76 @@ function loadSplitHelpers(values = {}) {
     XLSX: { utils: xlsxUtils }
   };
   vm.createContext(context);
-  vm.runInContext(`${html.slice(start, end)}\nthis.api={splitReadInt, splitGetMaxCols, splitGetDataRange, splitBuildPageGroups};`, context);
+  vm.runInContext(`${html.slice(start, end)}\nthis.api={splitReadInt, splitGetMaxCols, splitGetDataRange, splitBuildPageGroups, splitBuildCutLayout};`, context);
   return context.api;
+}
+
+function runSplitExecute(data, rowsPerPage) {
+  const elements = {
+    splitHeaderRows: { value: '1' }, splitTablesPerPage: { value: '2' },
+    splitRowsPerPage: { value: String(rowsPerPage) }, splitRowHeight: { value: '13.5' },
+    splitMergeFirst: { checked: false }, splitFirstRowH: { value: '20' },
+    splitCol: { value: '1' }, splitStats: { innerHTML: '' },
+    splitPreviewTable: { innerHTML: '' }, splitCutGuideInfo: { style: {} },
+    splitResultCard: { style: {}, scrollIntoView() {} }
+  };
+  const toasts = [];
+  const context = {
+    document: { getElementById: id => elements[id] },
+    splitWB: { Sheets: { Sheet1: {} } }, splitSelectedSheet: 'Sheet1',
+    splitMode: 'column', splitOrder: 'position', splitMergedData: null,
+    inputData: data, showToast: (...args) => toasts.push(args),
+    esc: value => String(value), fmtCell: value => String(value)
+  };
+  vm.createContext(context);
+  const helpersStart = html.indexOf('function splitReadInt(');
+  const helpersEnd = html.indexOf('\nfunction splitSetMode(', helpersStart);
+  const executeStart = html.indexOf('function splitExecute()');
+  const executeEnd = html.indexOf('\n// Auto-fit column widths utility', executeStart);
+  vm.runInContext(html.slice(helpersStart, helpersEnd) + html.slice(executeStart, executeEnd), context);
+  vm.runInContext('splitReadSheetData = () => inputData; splitExecute();', context);
+  return { result: context.splitMergedData, elements, toasts };
+}
+
+function runSplitExport(result) {
+  const worksheet = {
+    rows: new Map(), columns: new Map(),
+    getRow(number) {
+      if (!this.rows.has(number)) {
+        const row = { cells: new Map(), getCell(column) {
+          if (!this.cells.has(column)) this.cells.set(column, {});
+          return this.cells.get(column);
+        }, addPageBreak() { this.hasPageBreak = true; } };
+        this.rows.set(number, row);
+      }
+      return this.rows.get(number);
+    },
+    getColumn(number) {
+      if (!this.columns.has(number)) this.columns.set(number, {});
+      return this.columns.get(number);
+    },
+    mergeCells() {}
+  };
+  const elements = {
+    splitExportName: { value: '' }, splitBorders: { checked: false },
+    splitStyles: { checked: false }, splitRowHeight: { value: '13.5' },
+    splitMarginTop: { value: '2.54' }, splitMarginBottom: { value: '2.54' },
+    splitMarginLeft: { value: '1.91' }, splitMarginRight: { value: '1.91' }
+  };
+  const context = {
+    splitMergedData: result, splitFileName: 'sample.xlsx',
+    splitPaper: 'A4', splitOrient: 'portrait',
+    document: { getElementById: id => elements[id] },
+    ExcelJS: { Workbook: class {
+      addWorksheet() { return worksheet; }
+      xlsx = { writeBuffer: () => new Promise(() => {}) };
+    } }
+  };
+  vm.createContext(context);
+  const start = html.indexOf('function splitExport()');
+  const end = html.indexOf('\nfunction splitReset()', start);
+  vm.runInContext(html.slice(start, end) + '\nsplitExport();', context);
+  return worksheet;
 }
 
 test('table groups are ordered by print position across pages for easier cropping', () => {
@@ -85,12 +153,72 @@ test('incomplete final pages keep all physical table slots', () => {
   assert.deepEqual(pagePages[36], ['group-145', 'group-146', null, null]);
 });
 
+test('cut positions stay on the same rows when groups have different lengths', () => {
+  const { splitBuildCutLayout } = loadSplitHelpers();
+  const pages = [
+    [[1, 2], [1, 2, 3, 4], [1]],
+    [[1, 2, 3, 4, 5], [1], null]
+  ];
+  const layout = JSON.parse(JSON.stringify(splitBuildCutLayout(pages, 1, 18)));
+
+  assert.equal(layout.requiredRows, 13);
+  assert.deepEqual(layout.slotRows, [8, 7, 3]);
+  assert.deepEqual(layout.cutRows, [8, 15]);
+  assert.equal(layout.slotRows.reduce((sum, count) => sum + count, 0), 18);
+  for (const page of pages) {
+    page.forEach((group, slot) => {
+      assert.ok(group === null || 1 + group.length <= layout.slotRows[slot]);
+    });
+  }
+});
+
+test('cut layout refuses pages that would split a long table', () => {
+  const { splitBuildCutLayout } = loadSplitHelpers();
+  const layout = JSON.parse(JSON.stringify(splitBuildCutLayout([[[1, 2, 3, 4], [1, 2, 3]]], 1, 8)));
+  assert.equal(layout.requiredRows, 9);
+  assert.deepEqual(layout.slotRows, []);
+});
+
+test('table output pads shorter groups and repeats each cut line at the same row', () => {
+  const data = [['组', '值'],
+    ['A', 1], ['A', 2], ['A', 3], ['A', 4],
+    ['B', 1], ['C', 1], ['C', 2],
+    ['D', 1], ['D', 2], ['D', 3]];
+  const { result, elements } = runSplitExecute(data, 12);
+
+  assert.equal(result.pages, 2);
+  assert.equal(result.totalRows, 24);
+  assert.deepEqual(Array.from(result.cutAfterRows), [7, 19]);
+  assert.equal(result.rows[7][0], '组');
+  assert.equal(result.rows[19][0], '组');
+  assert.equal(result.isBlankRow[6], true);
+  assert.equal(result.isBlankRow[18], true);
+  assert.match(elements.splitPreviewTable.innerHTML, /split-cut-guide/);
+  const worksheet = runSplitExport(result);
+  for (const rowNumber of [7, 19]) {
+    assert.equal(worksheet.getRow(rowNumber).getCell(1).value, '✂ 沿虚线裁剪');
+    assert.equal(worksheet.getRow(rowNumber).getCell(1).border.bottom.style, 'mediumDashed');
+    assert.equal(worksheet.getRow(rowNumber).getCell(2).border.bottom.style, 'mediumDashed');
+  }
+  assert.equal(worksheet.getRow(12).hasPageBreak, true);
+});
+
+test('table output stops when aligned slots cannot fit the selected page size', () => {
+  const data = [['组'], ['A'], ['A'], ['A'], ['A'], ['B'], ['C'], ['C'], ['D'], ['D'], ['D']];
+  const { result, toasts } = runSplitExecute(data, 8);
+
+  assert.equal(result, null);
+  assert.match(toasts.at(-1)[0], /至少需要 9 行/);
+});
+
 test('split table UI exposes both page ordering choices and passes the selected order', () => {
   assert.match(html, /id="splitOrderOptions"/);
   assert.match(html, /onclick="splitSetOrder\('page'\)"/);
   assert.match(html, /splitBuildPageGroups\(tableGroups, tablesPerPage, splitOrder\)/);
-  assert.match(html, /emptySlotRows/);
-  assert.match(html, /group == null/);
+  assert.match(html, /splitBuildCutLayout\(pageGroupsList, headerRows, rowsPerPage\)/);
+  assert.match(html, /appendBlankRows\(cutLayout\.slotRows\[gi\], mergeFirst && headerRows > 0\)/);
+  assert.match(html, /cutAfterRows: Array\.from\(cutAfterRows\)/);
+  assert.match(html, /沿虚线裁剪/);
   assert.match(html, /保留空白位置/);
 });
 
