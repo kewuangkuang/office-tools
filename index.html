@@ -4881,7 +4881,7 @@ function multiRenderSheetSelector(){
     batchEl.style.display='';
     batchEl.innerHTML=`<div class="multi-sheet-shortcuts">${commonBlock}`+
       `<div class="multi-sheet-shortcut-group"><div class="multi-sheet-shortcut-label"><span>📑</span><span>按位置选择</span><span style="font-weight:400;color:var(--gray-400);">每个文件选择相同顺序的工作表</span></div><div class="multi-sheet-shortcut-buttons">${positionButtons}</div></div>`+
-      `<div class="multi-sheet-shortcut-group"><div class="multi-sheet-shortcut-label"><span>🔎</span><span>按关键词选中</span><span style="font-weight:400;color:var(--gray-400);">匹配所有文件中的工作表名称</span></div><div class="multi-sheet-keyword-row"><input id="multiSheetKeyword" class="multi-sheet-keyword-input" type="search" value="${esc(currentKeyword)}" placeholder="例如：华信" onkeydown="if(event.key==='Enter')multiSelectByKeywordFromInput()"><button class="multi-sheet-keyword-btn" onclick="multiSelectByKeywordFromInput()">搜索并选中</button></div></div>`+
+      `<div class="multi-sheet-shortcut-group"><div class="multi-sheet-shortcut-label"><span>🔎</span><span>按关键词选中</span><span style="font-weight:400;color:var(--gray-400);">匹配所有文件中的工作表名称</span></div><div class="multi-sheet-keyword-row"><input id="multiSheetKeyword" class="multi-sheet-keyword-input" type="search" value="${esc(currentKeyword)}" placeholder="例如：8月" onkeydown="if(event.key==='Enter')multiSelectByKeywordFromInput()"><button class="multi-sheet-keyword-btn" onclick="multiSelectByKeywordFromInput()">搜索并选中</button></div></div>`+
       `</div>`;
   }else{ batchEl.style.display='none'; batchEl.innerHTML=''; }
 
