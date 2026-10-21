@@ -2682,7 +2682,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
             <div class="toggle-text">自动对齐列顺序</div>
             <label class="toggle"><input type="checkbox" id="multiAlignByName" checked onchange="multiUpdateHeaderGuidance()"><span class="slider"></span></label>
           </div>
-          <div style="font-size:12px;color:var(--gray-500);line-height:1.6;margin-top:-2px;">上下追加时会保留原表中能够对应的合并单元格；按字段匹配会重排行列，不复制原合并区域。</div>
+          <div style="font-size:12px;color:var(--gray-500);line-height:1.6;margin-top:-2px;">上下追加时会保留原表中能够对应的合并单元格，包括跨行和跨列的标题合并；按字段匹配会重排行列，不复制原合并区域。</div>
           <div class="toggle-row" id="multiMergeHeaderRow">
             <div class="toggle-text">合并大标题</div>
             <div style="display:flex;align-items:center;gap:8px;">
@@ -5299,14 +5299,17 @@ function multiMapMergedRanges(sourceSheets,options={}){
       if(!merge)return;
       // Only the first sheet supplies the exported header rows. Data merges
       // from every selected sheet are mapped below those rows.
-      if(compressedHeaderRows>0&&merge.s.r<compressedHeaderRows)return;
       if(sourceHeaderRows>0&&merge.s.r<sourceHeaderRows&&sheetIndex!==0)return;
       const outputRows=[];
       let valid=true;
       for(let row=merge.s.r;row<=merge.e.r;row++){
         let mappedRow;
         if(sourceHeaderRows>0&&row<sourceHeaderRows){
-          mappedRow=row;
+          if(compressedHeaderRows>0){
+            mappedRow=row<compressedHeaderRows?0:row-compressedHeaderRows+1;
+          }else{
+            mappedRow=row;
+          }
         }else{
           const dataRow=rowMaps[sheetIndex]?.get(row);
           if(!Number.isInteger(dataRow)){valid=false;break;}
@@ -5315,8 +5318,9 @@ function multiMapMergedRanges(sourceSheets,options={}){
         outputRows.push(mappedRow);
       }
       if(!valid||!outputRows.length)return;
-      for(let i=1;i<outputRows.length;i++){
-        if(outputRows[i]!==outputRows[0]+i){valid=false;break;}
+      const compactRows=outputRows.filter((row,index)=>index===0||row!==outputRows[index-1]);
+      for(let i=1;i<compactRows.length;i++){
+        if(compactRows[i]!==compactRows[0]+i){valid=false;break;}
       }
       if(!valid)return;
 
@@ -5332,7 +5336,7 @@ function multiMapMergedRanges(sourceSheets,options={}){
         if(outputCols[i]!==outputCols[0]+i){valid=false;break;}
       }
       if(!valid)return;
-      const mapped={s:{r:outputRows[0],c:outputCols[0]},e:{r:outputRows[outputRows.length-1],c:outputCols[outputCols.length-1]}};
+      const mapped={s:{r:compactRows[0],c:outputCols[0]},e:{r:compactRows[compactRows.length-1],c:outputCols[outputCols.length-1]}};
       const key=`${mapped.s.r}:${mapped.s.c}:${mapped.e.r}:${mapped.e.c}`;
       if(!seen.has(key)){seen.add(key);output.push(mapped);}
     });
@@ -5625,7 +5629,9 @@ function multiExportXLSX(){
       const mergeEndC=nCols-1;
       if(mergeStartC<mergeEndC){
         for(let ri=0;ri<mergeRows;ri++){
-          merges.push({s:{r:ri,c:mergeStartC},e:{r:ri,c:mergeEndC}});
+          const synthetic={s:{r:ri,c:mergeStartC},e:{r:ri,c:mergeEndC}};
+          const overlaps=merges.some(merge=>merge.s.r<=ri&&merge.e.r>=ri&&merge.s.c<=synthetic.e.c&&merge.e.c>=synthetic.s.c);
+          if(!overlaps)merges.push(synthetic);
         }
       }
     }

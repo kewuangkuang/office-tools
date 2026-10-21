@@ -94,7 +94,45 @@ test('ignored blank rows that continue a merged range stay in the append result'
   ]);
 });
 
-test('title-row compression does not leave stale source header merges in the data area', () => {
+test('horizontal title and data merges keep their original columns', () => {
+  const build = loadMergedBuilder();
+  const result = build([{
+    fileName: 'Book3.xlsx',
+    sheetName: 'Sheet1',
+    data: [['标题', '', ''], ['a', 'b', 'c'], [1, 2, 3]],
+    merges: [
+      { s: { r: 0, c: 0 }, e: { r: 0, c: 2 } },
+      { s: { r: 1, c: 0 }, e: { r: 1, c: 1 } }
+    ]
+  }]);
+  assert.deepEqual(JSON.parse(JSON.stringify(result.merges)), [
+    { s: { r: 0, c: 0 }, e: { r: 0, c: 2 } },
+    { s: { r: 1, c: 0 }, e: { r: 1, c: 1 } }
+  ]);
+});
+
+test('compressed multi-row headers preserve horizontal merges in every output header row', () => {
+  const build = loadMergedBuilder({
+    multiHeaderRows: { value: '2' },
+    multiMergeHdr: { checked: true },
+    multiMergeHdrRows: { value: '1' }
+  });
+  const result = build([{
+    fileName: 'Book3.xlsx',
+    sheetName: 'Sheet1',
+    data: [['总标题', '', ''], ['分组', '名称', '值'], [1, 2, 3]],
+    merges: [
+      { s: { r: 0, c: 0 }, e: { r: 0, c: 2 } },
+      { s: { r: 1, c: 0 }, e: { r: 1, c: 1 } }
+    ]
+  }]);
+  assert.deepEqual(JSON.parse(JSON.stringify(result.merges)), [
+    { s: { r: 0, c: 0 }, e: { r: 0, c: 2 } },
+    { s: { r: 1, c: 0 }, e: { r: 1, c: 1 } }
+  ]);
+});
+
+test('title-row compression collapses source header merges without shifting data merges', () => {
   const build = loadMergedBuilder({
     multiHeaderRows: { value: '2' },
     multiMergeHdr: { checked: true },
@@ -110,6 +148,7 @@ test('title-row compression does not leave stale source header merges in the dat
     ]
   }]);
   assert.deepEqual(JSON.parse(JSON.stringify(result.merges)), [
+    { s: { r: 0, c: 0 }, e: { r: 0, c: 1 } },
     { s: { r: 1, c: 0 }, e: { r: 2, c: 0 } }
   ]);
 });
