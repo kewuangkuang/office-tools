@@ -114,6 +114,23 @@ test('title-row compression does not leave stale source header merges in the dat
   ]);
 });
 
+test('title-row compression keeps merges in later uncompressed header rows', () => {
+  const build = loadMergedBuilder({
+    multiHeaderRows: { value: '3' },
+    multiMergeHdr: { checked: true },
+    multiMergeHdrRows: { value: '1' }
+  });
+  const result = build([{
+    fileName: 'Book3.xlsx',
+    sheetName: 'Sheet1',
+    data: [['总表', '', ''], ['分组', '名称', '值'], ['', '', ''], ['value', 'x', 1]],
+    merges: [{ s: { r: 2, c: 0 }, e: { r: 2, c: 1 } }]
+  }]);
+  assert.deepEqual(JSON.parse(JSON.stringify(result.merges)), [
+    { s: { r: 2, c: 0 }, e: { r: 2, c: 1 } }
+  ]);
+});
+
 test('worker parser carries native worksheet merge ranges into the selected sheet data', () => {
   const start = html.indexOf('function multiBuildWorkbookWorkerSource(');
   const end = html.indexOf('\nfunction multiCreateWorkbookWorker(', start);

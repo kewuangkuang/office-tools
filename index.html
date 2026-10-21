@@ -5281,7 +5281,7 @@ function multiMapMergedRanges(sourceSheets,options={}){
   if(options.preserve===false)return [];
   const sourceHeaderRows=Math.max(0,Number(options.sourceHeaderRows??options.headerRows)||0);
   const outputHeaderRows=Math.max(0,Number(options.outputHeaderRows??options.headerRows)||0);
-  const skipHeaderMerges=options.skipHeaderMerges===true;
+  const compressedHeaderRows=Math.max(0,Number(options.compressedHeaderRows)||0);
   const rowMaps=options.rowMaps||[];
   const columnMaps=options.columnMaps||[];
   const output=[];
@@ -5293,7 +5293,7 @@ function multiMapMergedRanges(sourceSheets,options={}){
       if(!merge)return;
       // Only the first sheet supplies the exported header rows. Data merges
       // from every selected sheet are mapped below those rows.
-      if(skipHeaderMerges&&sourceHeaderRows>0&&merge.s.r<sourceHeaderRows)return;
+      if(compressedHeaderRows>0&&merge.s.r<compressedHeaderRows)return;
       if(sourceHeaderRows>0&&merge.s.r<sourceHeaderRows&&sheetIndex!==0)return;
       const outputRows=[];
       let valid=true;
@@ -5535,7 +5535,7 @@ function multiBuildMergedResult(allSheets){
     headers,
     rows,
     headerRows_raw:headerRows_raw||null,
-    merges:multiMapMergedRanges(allSheets,{sourceHeaderRows:headerRows,outputHeaderRows,rowMaps,columnMaps:mergeColumnMaps,preserve:!horizontal,skipHeaderMerges:mergedHeaderRows>0})
+    merges:multiMapMergedRanges(allSheets,{sourceHeaderRows:headerRows,outputHeaderRows,rowMaps,columnMaps:mergeColumnMaps,preserve:!horizontal,compressedHeaderRows:mergedHeaderRows})
   };
 }
 
