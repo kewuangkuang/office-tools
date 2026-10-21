@@ -21,6 +21,9 @@ test('multi-file merge exposes position and keyword sheet selection shortcuts', 
   assert.match(html, /multiSelectByPosition/);
   assert.match(html, /placeholder="例如：8月"/);
   assert.doesNotMatch(html, /placeholder="例如：杏林"/);
+  assert.match(html, /multi-sheet-shortcut-note/);
+  assert.match(html, /body\.theme-dark \.multi-sheet-shortcut-label \{ color: #D0D4EC; \}/);
+  assert.match(html, /body\.theme-dark \.sheet-item \.sheet-rows \{ color: #9A9EB6; \}/);
 });
 
 test('position and keyword shortcuts select the intended sheets across files', () => {

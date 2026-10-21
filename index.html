@@ -792,6 +792,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     display: flex; align-items: center; gap: 6px; margin-bottom: 7px;
     color: var(--gray-600); font-size: 12px; font-weight: 600; line-height: 1.4;
   }
+  .multi-sheet-shortcut-note { font-weight: 400; color: var(--gray-400); }
   .multi-sheet-shortcut-buttons { display: flex; flex-wrap: wrap; gap: 7px; }
   .multi-sheet-shortcut-btn {
     border: 1px solid var(--gray-200); border-radius: 999px;
@@ -807,14 +808,17 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     outline: none; transition: border-color .15s, box-shadow .15s;
   }
   .multi-sheet-keyword-input:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(var(--primary-rgb),.12); }
+  .multi-sheet-keyword-input::placeholder { color: var(--gray-400); }
   .multi-sheet-keyword-btn {
     border: 0; border-radius: 8px; padding: 8px 13px; color: white;
     background: var(--primary); font-size: 12px; font-weight: 700; cursor: pointer; white-space: nowrap;
   }
   .multi-sheet-keyword-btn:hover { filter: brightness(.95); }
   body.theme-dark .multi-sheet-shortcuts { border-color: var(--gray-700); background: linear-gradient(135deg, #202333, #252b45); }
-  body.theme-dark .multi-sheet-shortcut-btn, body.theme-dark .multi-sheet-keyword-input { border-color: var(--gray-700); background: #1E2030; color: var(--gray-200); }
-  body.theme-dark .multi-sheet-shortcut-label { color: var(--gray-300); }
+  body.theme-dark .multi-sheet-shortcut-btn, body.theme-dark .multi-sheet-keyword-input { border-color: var(--gray-700); background: #1E2030; color: #D0D4EC; }
+  body.theme-dark .multi-sheet-shortcut-label { color: #D0D4EC; }
+  body.theme-dark .multi-sheet-shortcut-note { color: #9A9EB6; }
+  body.theme-dark .multi-sheet-keyword-input::placeholder { color: #9A9EB6; }
   .count-badge {
     font-size: 12px; color: var(--gray-500); background: var(--gray-100);
     padding: 3px 10px; border-radius: 12px;
@@ -1784,8 +1788,9 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   body.theme-dark .sheet-item { background: #1E2030; border-color: #2A2D40; }
   body.theme-dark .sheet-item:hover { background: #252836; border-color: #7B8FF7; }
   body.theme-dark .sheet-item.selected { background: #2A3050; border-color: #7B8FF7; }
-  body.theme-dark .sheet-item .sheet-name { color: #B4B8D0; }
-  body.theme-dark .sheet-item .sheet-rows { color: #5C6078; }
+  body.theme-dark .file-sheet-group .file-group-header { color: #D0D4EC; background: #252836; }
+  body.theme-dark .sheet-item .sheet-name { color: #D0D4EC; }
+  body.theme-dark .sheet-item .sheet-rows { color: #9A9EB6; }
   body.theme-dark .sheet-preview-btn:hover { background: #2A2D40; }
   body.theme-dark .sheet-preview { background: #181A22; }
   body.theme-dark .sheet-preview th { background: #252836; color: #9A9EB6; }
@@ -3875,6 +3880,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         <ul>
           <li>多文件合并新增 Sheet 快速选择：可按每个文件的第 1、2 个工作表选择，也可以搜索关键词选中名称包含关键词的工作表。</li>
           <li>多文件追加合并保留原表的跨行、跨列和标题行合并单元格，并按输出位置映射合并范围。</li>
+          <li>修复夜间模式下工作表选择区域文字对比度不足的问题，工作表名称、行数和快捷选择提示在深色背景下更清晰。</li>
         </ul>
       </div>
       <div class="changelog-entry">
@@ -4875,13 +4881,13 @@ function multiRenderSheetSelector(){
   if(multiFiles.length&&maxSheetCount){
     const positionCount=Math.min(maxSheetCount,5);
     const positionButtons=Array.from({length:positionCount},(_,index)=>`<button class="multi-sheet-shortcut-btn" onclick="multiSelectByPosition(${index})">第${index+1}个 Sheet</button>`).join('');
-    const commonBlock=commonArr.length?`<div class="multi-sheet-shortcut-group"><div class="multi-sheet-shortcut-label"><span>🔍</span><span>共有工作表</span><span style="font-weight:400;color:var(--gray-400);">名称完全相同</span></div><div class="multi-sheet-shortcut-buttons">`+
+    const commonBlock=commonArr.length?`<div class="multi-sheet-shortcut-group"><div class="multi-sheet-shortcut-label"><span>🔍</span><span>共有工作表</span><span class="multi-sheet-shortcut-note">名称完全相同</span></div><div class="multi-sheet-shortcut-buttons">`+
       commonArr.map(n=>`<button class="multi-sheet-shortcut-btn" onclick="multiSelectOnlyByName('${esc(n.replace(/'/g,"\\'"))}')">${esc(n)}</button>`).join('')+
       `</div></div>`:'';
     batchEl.style.display='';
     batchEl.innerHTML=`<div class="multi-sheet-shortcuts">${commonBlock}`+
-      `<div class="multi-sheet-shortcut-group"><div class="multi-sheet-shortcut-label"><span>📑</span><span>按位置选择</span><span style="font-weight:400;color:var(--gray-400);">每个文件选择相同顺序的工作表</span></div><div class="multi-sheet-shortcut-buttons">${positionButtons}</div></div>`+
-      `<div class="multi-sheet-shortcut-group"><div class="multi-sheet-shortcut-label"><span>🔎</span><span>按关键词选中</span><span style="font-weight:400;color:var(--gray-400);">匹配所有文件中的工作表名称</span></div><div class="multi-sheet-keyword-row"><input id="multiSheetKeyword" class="multi-sheet-keyword-input" type="search" value="${esc(currentKeyword)}" placeholder="例如：8月" onkeydown="if(event.key==='Enter')multiSelectByKeywordFromInput()"><button class="multi-sheet-keyword-btn" onclick="multiSelectByKeywordFromInput()">搜索并选中</button></div></div>`+
+      `<div class="multi-sheet-shortcut-group"><div class="multi-sheet-shortcut-label"><span>📑</span><span>按位置选择</span><span class="multi-sheet-shortcut-note">每个文件选择相同顺序的工作表</span></div><div class="multi-sheet-shortcut-buttons">${positionButtons}</div></div>`+
+      `<div class="multi-sheet-shortcut-group"><div class="multi-sheet-shortcut-label"><span>🔎</span><span>按关键词选中</span><span class="multi-sheet-shortcut-note">匹配所有文件中的工作表名称</span></div><div class="multi-sheet-keyword-row"><input id="multiSheetKeyword" class="multi-sheet-keyword-input" type="search" value="${esc(currentKeyword)}" placeholder="例如：8月" onkeydown="if(event.key==='Enter')multiSelectByKeywordFromInput()"><button class="multi-sheet-keyword-btn" onclick="multiSelectByKeywordFromInput()">搜索并选中</button></div></div>`+
       `</div>`;
   }else{ batchEl.style.display='none'; batchEl.innerHTML=''; }
 
