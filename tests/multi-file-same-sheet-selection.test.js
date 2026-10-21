@@ -19,7 +19,7 @@ test('multi-file merge exposes position and keyword sheet selection shortcuts', 
   assert.match(html, /id="multiSheetKeyword"/);
   assert.match(html, /multiSelectByKeyword/);
   assert.match(html, /multiSelectByPosition/);
-  assert.match(html, /placeholder="例如：华信"/);
+  assert.match(html, /placeholder="例如：8月"/);
   assert.doesNotMatch(html, /placeholder="例如：杏林"/);
 });
 
