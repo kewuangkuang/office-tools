@@ -2682,6 +2682,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
             <div class="toggle-text">自动对齐列顺序</div>
             <label class="toggle"><input type="checkbox" id="multiAlignByName" checked onchange="multiUpdateHeaderGuidance()"><span class="slider"></span></label>
           </div>
+          <div style="font-size:12px;color:var(--gray-500);line-height:1.6;margin-top:-2px;">上下追加时会保留原表中能够对应的合并单元格；按字段匹配会重排行列，不复制原合并区域。</div>
           <div class="toggle-row" id="multiMergeHeaderRow">
             <div class="toggle-text">合并大标题</div>
             <div style="display:flex;align-items:center;gap:8px;">
@@ -4440,7 +4441,7 @@ function pdfSplitExtractFixedPartyName(lines){
 // ==========================================
 // TOOL 1: MULTI-FILE MERGE
 // ==========================================
-let multiFiles = []; // { name, size, sheets: [{ name, data, selected }] }
+let multiFiles = []; // { name, size, sheets: [{ name, data, merges, selected }] }
 let multiMergedData = null;
 let headerRows_raw = null; // 2D 多行表头原始数据
 let multiListExpanded = false;
@@ -4599,7 +4600,14 @@ function multiBuildWorkbookWorkerSource(sheetJsSource){
       const sheets=wb.SheetNames.map(function(name){
         const ws=wb.Sheets[name];
         const data=XLSX.utils.sheet_to_json(ws,{header:1,defval:'',raw:keepFmt});
-        return {name:name,data:data,selected:true};
+        const merges=Array.isArray(ws['!merges'])?ws['!merges'].map(function(merge){
+          if(!merge||!merge.s||!merge.e)return null;
+          const s={r:Number(merge.s.r),c:Number(merge.s.c)};
+          const e={r:Number(merge.e.r),c:Number(merge.e.c)};
+          if(!Number.isInteger(s.r)||!Number.isInteger(s.c)||!Number.isInteger(e.r)||!Number.isInteger(e.c)||s.r<0||s.c<0||e.r<s.r||e.c<s.c)return null;
+          return {s:s,e:e};
+        }).filter(Boolean):[];
+        return {name:name,data:data,merges:merges,selected:true};
       });
       self.postMessage({ok:true,sheets:sheets});
     }catch(error){
@@ -5263,6 +5271,75 @@ function multiBuildHorizontalJoin(allSheets,options){
   return {headers,rows,headerRows_raw};
 }
 
+function multiNormalizeMergeRange(merge){
+  if(!merge||!merge.s||!merge.e)return null;
+  const s={r:Number(merge.s.r),c:Number(merge.s.c)};
+  const e={r:Number(merge.e.r),c:Number(merge.e.c)};
+  if(!Number.isInteger(s.r)||!Number.isInteger(s.c)||!Number.isInteger(e.r)||!Number.isInteger(e.c))return null;
+  if(s.r<0||s.c<0||e.r<s.r||e.c<s.c)return null;
+  return {s,e};
+}
+
+// Map source merge ranges into the vertically appended export. Data rows are
+// shifted below the retained header rows; ranges are kept only when every
+// source row and column maps to one continuous output range.
+function multiMapMergedRanges(sourceSheets,options={}){
+  if(options.preserve===false)return [];
+  const sourceHeaderRows=Math.max(0,Number(options.sourceHeaderRows??options.headerRows)||0);
+  const outputHeaderRows=Math.max(0,Number(options.outputHeaderRows??options.headerRows)||0);
+  const compressedHeaderRows=Math.max(0,Number(options.compressedHeaderRows)||0);
+  const rowMaps=options.rowMaps||[];
+  const columnMaps=options.columnMaps||[];
+  const output=[];
+  const seen=new Set();
+  (sourceSheets||[]).forEach((sheet,sheetIndex)=>{
+    const merges=Array.isArray(sheet?.merges)?sheet.merges:[];
+    merges.forEach(rawMerge=>{
+      const merge=multiNormalizeMergeRange(rawMerge);
+      if(!merge)return;
+      // Only the first sheet supplies the exported header rows. Data merges
+      // from every selected sheet are mapped below those rows.
+      if(compressedHeaderRows>0&&merge.s.r<compressedHeaderRows)return;
+      if(sourceHeaderRows>0&&merge.s.r<sourceHeaderRows&&sheetIndex!==0)return;
+      const outputRows=[];
+      let valid=true;
+      for(let row=merge.s.r;row<=merge.e.r;row++){
+        let mappedRow;
+        if(sourceHeaderRows>0&&row<sourceHeaderRows){
+          mappedRow=row;
+        }else{
+          const dataRow=rowMaps[sheetIndex]?.get(row);
+          if(!Number.isInteger(dataRow)){valid=false;break;}
+          mappedRow=outputHeaderRows+dataRow;
+        }
+        outputRows.push(mappedRow);
+      }
+      if(!valid||!outputRows.length)return;
+      for(let i=1;i<outputRows.length;i++){
+        if(outputRows[i]!==outputRows[0]+i){valid=false;break;}
+      }
+      if(!valid)return;
+
+      const outputCols=[];
+      const columnMap=columnMaps[sheetIndex];
+      for(let col=merge.s.c;col<=merge.e.c;col++){
+        const mappedCol=columnMap?.get(col);
+        if(!Number.isInteger(mappedCol)){valid=false;break;}
+        outputCols.push(mappedCol);
+      }
+      if(!valid||!outputCols.length)return;
+      for(let i=1;i<outputCols.length;i++){
+        if(outputCols[i]!==outputCols[0]+i){valid=false;break;}
+      }
+      if(!valid)return;
+      const mapped={s:{r:outputRows[0],c:outputCols[0]},e:{r:outputRows[outputRows.length-1],c:outputCols[outputCols.length-1]}};
+      const key=`${mapped.s.r}:${mapped.s.c}:${mapped.e.r}:${mapped.e.c}`;
+      if(!seen.has(key)){seen.add(key);output.push(mapped);}
+    });
+  });
+  return output;
+}
+
 function multiBuildMergedResult(allSheets){
   headerRows_raw=null;
   const nh=document.getElementById('multiNoHeader').checked;
@@ -5277,7 +5354,19 @@ function multiBuildMergedResult(allSheets){
   const skipEmpty=document.getElementById('multiSkipEmpty').checked;
   const dedupe=document.getElementById('multiDedupe').checked;
 
+  const horizontal=document.querySelector('input[name="multiMergeDirection"]:checked')?.value==='join';
   let headers=[], rows=[];
+  let rowOrigins=[];
+  const mergeColumnMaps=allSheets.map(()=>new Map());
+  const mergedSourceRows=allSheets.map(sheet=>{
+    const rows=new Set();
+    (sheet.merges||[]).forEach(rawMerge=>{
+      const merge=multiNormalizeMergeRange(rawMerge);
+      if(!merge)return;
+      for(let row=merge.s.r;row<=merge.e.r;row++)rows.add(row);
+    });
+    return rows;
+  });
 
   if(headerRows>0){
     const alignByName=document.getElementById('multiAlignByName').checked;
@@ -5331,9 +5420,10 @@ function multiBuildMergedResult(allSheets){
     allSheets.forEach((sh,shIdx)=>{
       const data=sh.data; if(data.length<=headerRows)return;
       const colMap=sheetColMaps[shIdx]||[];
+      mergeColumnMaps[shIdx]=new Map(colMap.map(({ci,hk})=>[ci,(addSrc?1:0)+hdrIdx[hk]]));
       for(let ri=headerRows;ri<data.length;ri++){
         const row=data[ri]||[];
-        if(skipEmpty&&row.every(c=>c===''||c==null))continue;
+        if(skipEmpty&&row.every(c=>c===''||c==null)&&!mergedSourceRows[shIdx].has(ri))continue;
         const nr=new Array(headers.length).fill('');
         if(addSrc)nr[0]=srcMode==='custom'?srcTxt:sh.fileName+' - '+sh.sheetName;
         colMap.forEach(({ci,hk})=>{
@@ -5343,6 +5433,7 @@ function multiBuildMergedResult(allSheets){
           if(ci<row.length&&row[ci]!=null)nr[targetIdx]=row[ci];
         });
         rows.push(nr);
+        rowOrigins.push({sheet:shIdx,row:ri});
       }
     });
 
@@ -5380,10 +5471,12 @@ function multiBuildMergedResult(allSheets){
 
     allSheets.forEach((sh,shIdx)=>{
       const data=sh.data; if(!data.length)return;
-      const start=shIdx===0?headerRows:0;
+      const maxSourceCols=Math.max(...data.map(row=>(row||[]).length),0);
+      mergeColumnMaps[shIdx]=new Map(Array.from({length:maxSourceCols},(_,ci)=>[ci,(addSrc?1:0)+ci]));
+      const start=headerRows;
       for(let ri=start;ri<data.length;ri++){
         const row=data[ri]||[];
-        if(skipEmpty&&row.every(c=>c===''||c==null))continue;
+        if(skipEmpty&&row.every(c=>c===''||c==null)&&!mergedSourceRows[shIdx].has(ri))continue;
         const nr=new Array(headers.length).fill('');
         const offset=addSrc?1:0;
         if(addSrc)nr[0]=srcMode==='custom'?srcTxt:sh.fileName+' - '+sh.sheetName;
@@ -5391,6 +5484,7 @@ function multiBuildMergedResult(allSheets){
           nr[offset+ci]=row[ci]!=null?row[ci]:'';
         }
         rows.push(nr);
+        rowOrigins.push({sheet:shIdx,row:ri});
       }
     });
 
@@ -5401,21 +5495,34 @@ function multiBuildMergedResult(allSheets){
     // 无列头模式
     allSheets.forEach((sh,idx)=>{
       const data=sh.data; if(!data.length)return;
-      data.forEach(row=>{
-        if(skipEmpty&&row.every(c=>c===''||c==null))return;
+      const maxSourceCols=Math.max(...data.map(row=>(row||[]).length),0);
+      mergeColumnMaps[idx]=new Map(Array.from({length:maxSourceCols},(_,ci)=>[ci,(addSrc?1:0)+ci]));
+      data.forEach((row,rowIndex)=>{
+        if(skipEmpty&&row.every(c=>c===''||c==null)&&!mergedSourceRows[idx].has(rowIndex))return;
         const p=[...row]; if(addSrc)p.unshift(srcMode==='custom'?srcTxt:sh.fileName+' - '+sh.sheetName);
-        rows.push(p); if(headers.length<p.length){ while(headers.length<p.length)headers.push('列'+(headers.length+1)); }
+        rows.push(p); rowOrigins.push({sheet:idx,row:rowIndex}); if(headers.length<p.length){ while(headers.length<p.length)headers.push('列'+(headers.length+1)); }
       });
       if(addSrc&&headers[0]!=='来源')headers.unshift('来源');
     });
   }
 
-  if(dedupe&&rows.length){ const seen=new Set(); const skipSrc=addSrc?1:0; rows=rows.filter(r=>{ const k=JSON.stringify(r.slice(skipSrc)); if(seen.has(k))return false; seen.add(k); return true; }); }
+  if(dedupe&&rows.length){
+    const seen=new Set(); const skipSrc=addSrc?1:0;
+    const keptRows=[]; const keptOrigins=[];
+    rows.forEach((row,index)=>{
+      const k=JSON.stringify(row.slice(skipSrc));
+      if(seen.has(k))return;
+      seen.add(k); keptRows.push(row); keptOrigins.push(rowOrigins[index]);
+    });
+    rows=keptRows; rowOrigins=keptOrigins;
+  }
   rows=rows.map(r=>{ while(r.length>headers.length)r.pop(); while(r.length<headers.length)r.push(''); return r; });
 
   // 合并标题行单元格：将前 N 行表头用 / 合并为一行
+  let mergedHeaderRows=0;
   if(headerRows>1 && headerRows_raw && document.getElementById('multiMergeHdr').checked){
     const mergeRows=Math.min(parseInt(document.getElementById('multiMergeHdrRows').value)||1, headerRows_raw.length);
+    mergedHeaderRows=mergeRows;
     const mergedHdr=new Array(headerRows_raw[0].length).fill('');
     for(let ri=0;ri<mergeRows;ri++){
       for(let ci=0;ci<headerRows_raw[ri].length;ci++){
@@ -5425,7 +5532,17 @@ function multiBuildMergedResult(allSheets){
     headerRows_raw=[mergedHdr,...headerRows_raw.slice(mergeRows)];
   }
 
-  return {headers,rows,headerRows_raw:headerRows_raw||null};
+  const outputHeaderRows=headerRows_raw&&headerRows_raw.length?headerRows_raw.length:1;
+  const rowMaps=allSheets.map(()=>new Map());
+  rowOrigins.forEach((origin,index)=>{
+    if(origin&&rowMaps[origin.sheet])rowMaps[origin.sheet].set(origin.row,index);
+  });
+  return {
+    headers,
+    rows,
+    headerRows_raw:headerRows_raw||null,
+    merges:multiMapMergedRanges(allSheets,{sourceHeaderRows:headerRows,outputHeaderRows,rowMaps,columnMaps:mergeColumnMaps,preserve:!horizontal,compressedHeaderRows:mergedHeaderRows})
+  };
 }
 
 function multiRenderMergedPreview(result){
@@ -5455,7 +5572,7 @@ function multiRenderMergedPreview(result){
 
 function multiMerge(){
   const allSheets=[];
-  multiFiles.forEach(f=>{ f.sheets.forEach(sh=>{ if(sh.selected)allSheets.push({fileName:f.relPath||f.name,sheetName:sh.name,data:sh.data}); }); });
+  multiFiles.forEach(f=>{ f.sheets.forEach(sh=>{ if(sh.selected)allSheets.push({fileName:f.relPath||f.name,sheetName:sh.name,data:sh.data,merges:sh.merges||[]}); }); });
   if(!allSheets.length){ showToast('请选择工作表','error'); return; }
   const grouped=document.querySelector('input[name="multiOutputMode"]:checked')?.value==='grouped';
   const horizontal=document.querySelector('input[name="multiMergeDirection"]:checked')?.value==='join';
@@ -5479,7 +5596,8 @@ function multiMerge(){
   const first=results[0];
   multiMergedData={...first,grouped,results};
   const totalRows=results.reduce((sum,result)=>sum+result.rows.length,0);
-  document.getElementById('multiStats').innerHTML=`<div class="stat-item"><div class="stat-value">${grouped?results.length:allSheets.length}</div><div class="stat-label">${grouped?'汇总表':'工作表'}</div></div><div class="stat-item"><div class="stat-value">${totalRows}</div><div class="stat-label">合并行数</div></div><div class="stat-item"><div class="stat-value">${first.headers.length}</div><div class="stat-label">预览列数</div></div>`;
+  const mergeCount=results.reduce((sum,result)=>sum+(result.merges?.length||0),0);
+  document.getElementById('multiStats').innerHTML=`<div class="stat-item"><div class="stat-value">${grouped?results.length:allSheets.length}</div><div class="stat-label">${grouped?'汇总表':'工作表'}</div></div><div class="stat-item"><div class="stat-value">${totalRows}</div><div class="stat-label">合并行数</div></div><div class="stat-item"><div class="stat-value">${first.headers.length}</div><div class="stat-label">预览列数</div></div><div class="stat-item"><div class="stat-value">${mergeCount}</div><div class="stat-label">保留合并区域</div></div>`;
   multiRenderMergedPreview(first);
   initColResize();
   document.getElementById('multiResultCard').style.display='';
@@ -5497,6 +5615,7 @@ function multiExportXLSX(){
     const nCols=hdr[0].length;
     const ws=XLSX.utils.aoa_to_sheet([...hdr,...result.rows]);
     autoFitCols(ws);
+    const merges=Array.isArray(result.merges)?result.merges.map(multiNormalizeMergeRange).filter(Boolean):[];
     // 合并标题行单元格
     const mergeChk=document.getElementById('multiMergeHdr').checked;
     const mergeRows=mergeChk?Math.min(parseInt(document.getElementById('multiMergeHdrRows').value)||1,hdr.length):0;
@@ -5505,12 +5624,19 @@ function multiExportXLSX(){
       const mergeStartC=hasSrc?1:0;
       const mergeEndC=nCols-1;
       if(mergeStartC<mergeEndC){
-        ws['!merges']=[];
         for(let ri=0;ri<mergeRows;ri++){
-          ws['!merges'].push({s:{r:ri,c:mergeStartC},e:{r:ri,c:mergeEndC}});
+          merges.push({s:{r:ri,c:mergeStartC},e:{r:ri,c:mergeEndC}});
         }
-        centerMergedCells(ws, ws['!merges']);
       }
+    }
+    if(merges.length){
+      const seen=new Set();
+      ws['!merges']=merges.filter(merge=>{
+        const key=`${merge.s.r}:${merge.s.c}:${merge.e.r}:${merge.e.c}`;
+        if(seen.has(key))return false;
+        seen.add(key); return true;
+      });
+      centerMergedCells(ws, ws['!merges']);
     }
     XLSX.utils.book_append_sheet(wb,ws,result.name);
   };
