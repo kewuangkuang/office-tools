@@ -94,6 +94,26 @@ test('ignored blank rows that continue a merged range stay in the append result'
   ]);
 });
 
+test('title-row compression does not leave stale source header merges in the data area', () => {
+  const build = loadMergedBuilder({
+    multiHeaderRows: { value: '2' },
+    multiMergeHdr: { checked: true },
+    multiMergeHdrRows: { value: '2' }
+  });
+  const result = build([{
+    fileName: 'Book3.xlsx',
+    sheetName: 'Sheet1',
+    data: [['分组', ''], ['a', 'b'], ['value', 1], ['', 2]],
+    merges: [
+      { s: { r: 0, c: 0 }, e: { r: 1, c: 1 } },
+      { s: { r: 2, c: 0 }, e: { r: 3, c: 0 } }
+    ]
+  }]);
+  assert.deepEqual(JSON.parse(JSON.stringify(result.merges)), [
+    { s: { r: 1, c: 0 }, e: { r: 2, c: 0 } }
+  ]);
+});
+
 test('worker parser carries native worksheet merge ranges into the selected sheet data', () => {
   const start = html.indexOf('function multiBuildWorkbookWorkerSource(');
   const end = html.indexOf('\nfunction multiCreateWorkbookWorker(', start);

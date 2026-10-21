@@ -5281,6 +5281,7 @@ function multiMapMergedRanges(sourceSheets,options={}){
   if(options.preserve===false)return [];
   const sourceHeaderRows=Math.max(0,Number(options.sourceHeaderRows??options.headerRows)||0);
   const outputHeaderRows=Math.max(0,Number(options.outputHeaderRows??options.headerRows)||0);
+  const skipHeaderMerges=options.skipHeaderMerges===true;
   const rowMaps=options.rowMaps||[];
   const columnMaps=options.columnMaps||[];
   const output=[];
@@ -5292,6 +5293,7 @@ function multiMapMergedRanges(sourceSheets,options={}){
       if(!merge)return;
       // Only the first sheet supplies the exported header rows. Data merges
       // from every selected sheet are mapped below those rows.
+      if(skipHeaderMerges&&sourceHeaderRows>0&&merge.s.r<sourceHeaderRows)return;
       if(sourceHeaderRows>0&&merge.s.r<sourceHeaderRows&&sheetIndex!==0)return;
       const outputRows=[];
       let valid=true;
@@ -5511,8 +5513,10 @@ function multiBuildMergedResult(allSheets){
   rows=rows.map(r=>{ while(r.length>headers.length)r.pop(); while(r.length<headers.length)r.push(''); return r; });
 
   // 合并标题行单元格：将前 N 行表头用 / 合并为一行
+  let mergedHeaderRows=0;
   if(headerRows>1 && headerRows_raw && document.getElementById('multiMergeHdr').checked){
     const mergeRows=Math.min(parseInt(document.getElementById('multiMergeHdrRows').value)||1, headerRows_raw.length);
+    mergedHeaderRows=mergeRows;
     const mergedHdr=new Array(headerRows_raw[0].length).fill('');
     for(let ri=0;ri<mergeRows;ri++){
       for(let ci=0;ci<headerRows_raw[ri].length;ci++){
@@ -5531,7 +5535,7 @@ function multiBuildMergedResult(allSheets){
     headers,
     rows,
     headerRows_raw:headerRows_raw||null,
-    merges:multiMapMergedRanges(allSheets,{sourceHeaderRows:headerRows,outputHeaderRows,rowMaps,columnMaps:mergeColumnMaps,preserve:!horizontal})
+    merges:multiMapMergedRanges(allSheets,{sourceHeaderRows:headerRows,outputHeaderRows,rowMaps,columnMaps:mergeColumnMaps,preserve:!horizontal,skipHeaderMerges:mergedHeaderRows>0})
   };
 }
 
