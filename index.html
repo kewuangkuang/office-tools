@@ -782,6 +782,39 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     border: none; border-radius: 6px; padding: 5px 12px; cursor: pointer; font-weight: 500;
   }
   .sheet-toolbar .select-all-btn:hover { background: var(--primary); color: white; }
+  .multi-sheet-shortcuts {
+    margin: 8px 0 14px; padding: 13px 15px;
+    border: 1px solid var(--gray-200); border-radius: 12px;
+    background: linear-gradient(135deg, var(--gray-50), var(--primary-bg));
+  }
+  .multi-sheet-shortcut-group + .multi-sheet-shortcut-group { margin-top: 12px; }
+  .multi-sheet-shortcut-label {
+    display: flex; align-items: center; gap: 6px; margin-bottom: 7px;
+    color: var(--gray-600); font-size: 12px; font-weight: 600; line-height: 1.4;
+  }
+  .multi-sheet-shortcut-buttons { display: flex; flex-wrap: wrap; gap: 7px; }
+  .multi-sheet-shortcut-btn {
+    border: 1px solid var(--gray-200); border-radius: 999px;
+    padding: 6px 11px; color: var(--primary); background: white;
+    font-size: 12px; font-weight: 600; cursor: pointer;
+    transition: border-color .15s, background-color .15s, color .15s, transform .15s;
+  }
+  .multi-sheet-shortcut-btn:hover { border-color: var(--primary); background: var(--primary); color: white; transform: translateY(-1px); }
+  .multi-sheet-keyword-row { display: flex; gap: 8px; max-width: 520px; }
+  .multi-sheet-keyword-input {
+    flex: 1; min-width: 0; padding: 8px 11px; border: 1px solid var(--gray-200);
+    border-radius: 8px; background: white; color: var(--gray-700); font-size: 13px;
+    outline: none; transition: border-color .15s, box-shadow .15s;
+  }
+  .multi-sheet-keyword-input:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(var(--primary-rgb),.12); }
+  .multi-sheet-keyword-btn {
+    border: 0; border-radius: 8px; padding: 8px 13px; color: white;
+    background: var(--primary); font-size: 12px; font-weight: 700; cursor: pointer; white-space: nowrap;
+  }
+  .multi-sheet-keyword-btn:hover { filter: brightness(.95); }
+  body.theme-dark .multi-sheet-shortcuts { border-color: var(--gray-700); background: linear-gradient(135deg, #202333, #252b45); }
+  body.theme-dark .multi-sheet-shortcut-btn, body.theme-dark .multi-sheet-keyword-input { border-color: var(--gray-700); background: #1E2030; color: var(--gray-200); }
+  body.theme-dark .multi-sheet-shortcut-label { color: var(--gray-300); }
   .count-badge {
     font-size: 12px; color: var(--gray-500); background: var(--gray-100);
     padding: 3px 10px; border-radius: 12px;
@@ -3838,6 +3871,13 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     </div>
     <div class="changelog-body">
       <div class="changelog-entry">
+        <div class="changelog-date">2026-10-21</div>
+        <ul>
+          <li>多文件合并新增 Sheet 快速选择：可按每个文件的第 1、2 个工作表选择，也可以搜索关键词选中名称包含关键词的工作表。</li>
+          <li>多文件追加合并保留原表的跨行、跨列和标题行合并单元格，并按输出位置映射合并范围。</li>
+        </ul>
+      </div>
+      <div class="changelog-entry">
         <div class="changelog-date">2026-08-21</div>
         <ul>
           <li>表格拆分新增“按字段拆成多个 Sheet”：选择字段列后，相同字段值归入同一个 Sheet，每个 Sheet 自动重复保留表头；空白字段归入“空白”Sheet，并自动处理非法、重复和超长的工作表名。</li>
@@ -4830,10 +4870,18 @@ function multiRenderSheetSelector(){
     for(const n of common) if(!s.has(n)) common.delete(n);
   }
   const commonArr=Array.from(common);
-  if(commonArr.length>0){
+  const currentKeyword=document.getElementById('multiSheetKeyword')?.value||'';
+  const maxSheetCount=multiFiles.reduce((max,file)=>Math.max(max,file.sheets.length),0);
+  if(multiFiles.length&&maxSheetCount){
+    const positionCount=Math.min(maxSheetCount,5);
+    const positionButtons=Array.from({length:positionCount},(_,index)=>`<button class="multi-sheet-shortcut-btn" onclick="multiSelectByPosition(${index})">第${index+1}个 Sheet</button>`).join('');
+    const commonBlock=commonArr.length?`<div class="multi-sheet-shortcut-group"><div class="multi-sheet-shortcut-label"><span>🔍</span><span>共有工作表</span><span style="font-weight:400;color:var(--gray-400);">名称完全相同</span></div><div class="multi-sheet-shortcut-buttons">`+
+      commonArr.map(n=>`<button class="multi-sheet-shortcut-btn" onclick="multiSelectOnlyByName('${esc(n.replace(/'/g,"\\'"))}')">${esc(n)}</button>`).join('')+
+      `</div></div>`:'';
     batchEl.style.display='';
-    batchEl.innerHTML=`<div style="font-size:12px;color:var(--gray-500);margin-bottom:4px;">🔍 共有工作表 — 点击切换：</div><div style="display:flex;flex-wrap:wrap;gap:6px;">`+
-      commonArr.map(n=>`<button class="select-all-btn" onclick="multiSelectOnlyByName('${esc(n.replace(/'/g,"\\'"))}')">${esc(n)}</button>`).join('')+
+    batchEl.innerHTML=`<div class="multi-sheet-shortcuts">${commonBlock}`+
+      `<div class="multi-sheet-shortcut-group"><div class="multi-sheet-shortcut-label"><span>📑</span><span>按位置选择</span><span style="font-weight:400;color:var(--gray-400);">每个文件选择相同顺序的工作表</span></div><div class="multi-sheet-shortcut-buttons">${positionButtons}</div></div>`+
+      `<div class="multi-sheet-shortcut-group"><div class="multi-sheet-shortcut-label"><span>🔎</span><span>按关键词选中</span><span style="font-weight:400;color:var(--gray-400);">匹配所有文件中的工作表名称</span></div><div class="multi-sheet-keyword-row"><input id="multiSheetKeyword" class="multi-sheet-keyword-input" type="search" value="${esc(currentKeyword)}" placeholder="例如：杏林" onkeydown="if(event.key==='Enter')multiSelectByKeywordFromInput()"><button class="multi-sheet-keyword-btn" onclick="multiSelectByKeywordFromInput()">搜索并选中</button></div></div>`+
       `</div>`;
   }else{ batchEl.style.display='none'; batchEl.innerHTML=''; }
 
@@ -4865,6 +4913,33 @@ function multiRenderSheetSelector(){
 function multiToggleSheetExpand(){ multiSheetExpanded=!multiSheetExpanded; multiRenderSheetSelector(); }
 function multiToggleFile(fi){ const f=multiFiles[fi]; const all=f.sheets.every(s=>s.selected); f.sheets.forEach(s=>s.selected=!all); multiRenderSheetSelector(); }
 function multiToggleSheet(fi,si){ multiFiles[fi].sheets[si].selected=!multiFiles[fi].sheets[si].selected; multiRenderSheetSelector(); }
+function multiSelectByPosition(position){
+  const index=Math.max(0,Number(position)||0);
+  let selected=0;
+  multiFiles.forEach(file=>{
+    file.sheets.forEach(sheet=>{ sheet.selected=false; });
+    if(file.sheets[index]){ file.sheets[index].selected=true; selected++; }
+  });
+  multiResetNameBtnState();
+  multiRenderSheetSelector();
+  showToast(`已选中每个文件的第 ${index+1} 个工作表（${selected} 个）`,'success');
+}
+function multiSelectByKeyword(keyword){
+  const query=String(keyword||'').trim().toLowerCase();
+  if(!query){ showToast('请输入要搜索的工作表关键词','info'); return; }
+  let selected=0;
+  multiFiles.forEach(file=>file.sheets.forEach(sheet=>{
+    sheet.selected=String(sheet.name||'').toLowerCase().includes(query);
+    if(sheet.selected)selected++;
+  }));
+  multiResetNameBtnState();
+  multiRenderSheetSelector();
+  showToast(selected?`已按“${String(keyword).trim()}”选中 ${selected} 个工作表`:'没有找到包含该关键词的工作表',selected?'success':'info');
+}
+function multiSelectByKeywordFromInput(){
+  const input=document.getElementById('multiSheetKeyword');
+  multiSelectByKeyword(input?.value||'');
+}
 let currentPreviewKey=null; // 记录当前预览的 sheet 键值
 function multiTogglePreview(fi,si){
   const key=`${fi}-${si}`;
