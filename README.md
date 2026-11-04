@@ -24,13 +24,19 @@
 
 <https://kewuangkuang.github.io/office-tools/>
 
-### 方式二：下载后本地使用（处理敏感文件时推荐）
+### 方式二：下载本地版（高精度 OCR 推荐）
 
-1. 下载本仓库代码。
-2. 双击打开 `index.html`。
-3. 把文件拖进去处理。
+1. 在网页右上角点击“下载本地版”，下载 `办公工具箱本地版.zip`。
+2. 解压 ZIP 文件。
+3. macOS 双击 `ocr-local-helper/start-local.command`；Windows 双击 `ocr-local-helper/start-windows.bat`。
+4. 启动脚本会打开 `http://127.0.0.1:8766/index.html`，进入“批量识别命名”即可使用本地 PaddleOCR Server。
+5. 识别结果来源显示“本地 PaddleOCR Server”时，表示已使用高精度本地模型。
 
-这个项目不需要安装 Python、Node.js、数据库，也不需要注册账号。
+本地版首次启动需要联网下载 Python 依赖；首次识别可能还会下载 PaddleOCR 模型。当前版本需要 Python 3.10–3.13，不需要账号、数据库或 API Key。不要直接双击 `index.html`，应使用启动脚本打开本地网页。
+
+### 方式三：下载仓库代码
+
+开发者也可以下载本仓库后，按 `ocr-local-helper/README.md` 启动本地 OCR 服务。
 
 ## 问题反馈
 
@@ -54,10 +60,13 @@
 | PDF 合并 / PDF 拆分 | 否 | 浏览器本地处理 |
 | 批量重命名 / 文件名汇总 | 否 | 浏览器本地处理 |
 | PDF 回单识别场景 | 否 | 使用浏览器本地 PDF 解析、转图和 PaddleOCR.js 适配层；不上传财务单据 |
+| 下载本地 OCR 版 | Python 3.10–3.13 | 使用本机 PP-OCRv5_server 模型；只监听 127.0.0.1 |
 
 ## 网络要求
 
-普通 Excel / PDF 功能、PDF 回单拆分、图片转换和 OCR 字段识别都在访客本地浏览器运行。服务器只提供静态网页资源，不接收、不保存用户上传的 PDF、图片或财务单据。
+普通 Excel / PDF 功能、PDF 回单拆分、图片转换和浏览器 OCR 字段识别都在访客本地浏览器运行。服务器只提供静态网页资源，不接收、不保存用户上传的 PDF、图片或财务单据。
+
+下载的本地 OCR 版首次运行时需要联网安装 Python 依赖；安装完成后，网页只把图片裁剪区域提交给本机 `127.0.0.1:8765`，不上传到作者服务器或第三方 OCR 服务。
 
 PDF 回单 OCR 使用 PaddleOCR.js 适配层。部署时需要把 PaddleOCR.js 及模型文件作为静态资源随网页一起提供；如果页面没有加载到这些本地资源，回单模式会只使用 PDF 文字层识别，并提示用户缺少本地 OCR 资源。
 

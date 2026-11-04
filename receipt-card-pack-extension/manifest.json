@@ -1,0 +1,22 @@
+{
+  "manifest_version": 3,
+  "name": "回单卡包助手（原型）",
+  "version": "0.2.0",
+  "description": "在网页中点击“补充回执单”，按报销金额合计自动查找、预览并选择本地回单卡包里的附件。",
+  "permissions": ["storage", "unlimitedStorage"],
+  "host_permissions": ["<all_urls>"],
+  "background": {
+    "service_worker": "service-worker.js"
+  },
+  "action": {
+    "default_title": "回单卡包",
+    "default_popup": "popup.html"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["core.js", "zip-reader.js", "binary.js", "content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}

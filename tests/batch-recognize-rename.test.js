@@ -228,6 +228,62 @@ test('image OCR sends precise field crops to one PaddleOCR batch before fallback
   assert.deepEqual(Array.from(result.sources), ['PaddleOCR', 'PaddleOCR']);
 });
 
+test('installed local OCR helper is probed and receives image crops in order', async () => {
+  const start = html.indexOf("const LOCAL_OCR_HELPER_BASE_URL=");
+  const end = html.indexOf('\nasync function batchRecognizeOcr(crop,', start);
+  assert.ok(start >= 0 && end > start, 'local OCR helper client should exist');
+
+  const requests = [];
+  const responses = [
+    { ok: true, json: async () => ({ ok: true, engine: 'PP-OCRv5_server' }) },
+    {
+      ok: true,
+      json: async () => ({
+        engine: 'PP-OCRv5_server',
+        results: [
+          { text: '甲公司', lines: ['甲公司'], scores: [0.99] },
+          { text: '2026', lines: ['2026'], scores: [0.98] }
+        ]
+      })
+    }
+  ];
+  class FormDataStub {
+    constructor() { this.parts = []; }
+    append(name, value, filename) { this.parts.push({ name, value, filename }); }
+  }
+  const context = {
+    LOCAL_OCR_HELPER_BASE_URL: 'http://127.0.0.1:8765',
+    LOCAL_OCR_HELPER_HEALTH_TIMEOUT_MS: 50,
+    LOCAL_OCR_HELPER_TIMEOUT_MS: 100,
+    FormData: FormDataStub,
+    fetch: async (url, options) => {
+      requests.push({ url, options });
+      return responses.shift();
+    },
+    AbortController,
+    setTimeout,
+    clearTimeout,
+    console
+  };
+  vm.createContext(context);
+  vm.runInContext(`${html.slice(start, end)}\nthis.run=batchRecognizeLocalOcrBatch;`, context);
+
+  const makeCrop = id => ({
+    toBlob(callback) { callback({ id }); }
+  });
+  const result = await context.run([
+    makeCrop('first'),
+    makeCrop('second')
+  ]);
+
+  assert.equal(requests.length, 2);
+  assert.equal(requests[0].url, 'http://127.0.0.1:8765/health');
+  assert.equal(requests[1].url, 'http://127.0.0.1:8765/v1/ocr/batch');
+  assert.deepEqual(requests[1].options.body.parts.map(part => part.name), ['images', 'images']);
+  assert.deepEqual(requests[1].options.body.parts.map(part => part.filename), ['field-1.png', 'field-2.png']);
+  assert.deepEqual(result.map(item => item.text), ['甲公司', '2026']);
+});
+
 test('suspicious batch OCR output is rechecked with single-image PaddleOCR', async () => {
   const start = html.indexOf('function batchRecognizeGetCropRect(');
   const scaleStart = html.indexOf('function batchRecognizeCropScale(');
