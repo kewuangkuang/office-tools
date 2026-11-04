@@ -782,6 +782,43 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     border: none; border-radius: 6px; padding: 5px 12px; cursor: pointer; font-weight: 500;
   }
   .sheet-toolbar .select-all-btn:hover { background: var(--primary); color: white; }
+  .multi-sheet-shortcuts {
+    margin: 8px 0 14px; padding: 13px 15px;
+    border: 1px solid var(--gray-200); border-radius: 12px;
+    background: linear-gradient(135deg, var(--gray-50), var(--primary-bg));
+  }
+  .multi-sheet-shortcut-group + .multi-sheet-shortcut-group { margin-top: 12px; }
+  .multi-sheet-shortcut-label {
+    display: flex; align-items: center; gap: 6px; margin-bottom: 7px;
+    color: var(--gray-600); font-size: 12px; font-weight: 600; line-height: 1.4;
+  }
+  .multi-sheet-shortcut-note { font-weight: 400; color: var(--gray-400); }
+  .multi-sheet-shortcut-buttons { display: flex; flex-wrap: wrap; gap: 7px; }
+  .multi-sheet-shortcut-btn {
+    border: 1px solid var(--gray-200); border-radius: 999px;
+    padding: 6px 11px; color: var(--primary); background: white;
+    font-size: 12px; font-weight: 600; cursor: pointer;
+    transition: border-color .15s, background-color .15s, color .15s, transform .15s;
+  }
+  .multi-sheet-shortcut-btn:hover { border-color: var(--primary); background: var(--primary); color: white; transform: translateY(-1px); }
+  .multi-sheet-keyword-row { display: flex; gap: 8px; max-width: 520px; }
+  .multi-sheet-keyword-input {
+    flex: 1; min-width: 0; padding: 8px 11px; border: 1px solid var(--gray-200);
+    border-radius: 8px; background: white; color: var(--gray-700); font-size: 13px;
+    outline: none; transition: border-color .15s, box-shadow .15s;
+  }
+  .multi-sheet-keyword-input:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(var(--primary-rgb),.12); }
+  .multi-sheet-keyword-input::placeholder { color: var(--gray-400); }
+  .multi-sheet-keyword-btn {
+    border: 0; border-radius: 8px; padding: 8px 13px; color: white;
+    background: var(--primary); font-size: 12px; font-weight: 700; cursor: pointer; white-space: nowrap;
+  }
+  .multi-sheet-keyword-btn:hover { filter: brightness(.95); }
+  body.theme-dark .multi-sheet-shortcuts { border-color: var(--gray-700); background: linear-gradient(135deg, #202333, #252b45); }
+  body.theme-dark .multi-sheet-shortcut-btn, body.theme-dark .multi-sheet-keyword-input { border-color: var(--gray-700); background: #1E2030; color: #D0D4EC; }
+  body.theme-dark .multi-sheet-shortcut-label { color: #D0D4EC; }
+  body.theme-dark .multi-sheet-shortcut-note { color: #9A9EB6; }
+  body.theme-dark .multi-sheet-keyword-input::placeholder { color: #9A9EB6; }
   .count-badge {
     font-size: 12px; color: var(--gray-500); background: var(--gray-100);
     padding: 3px 10px; border-radius: 12px;
@@ -1751,8 +1788,9 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   body.theme-dark .sheet-item { background: #1E2030; border-color: #2A2D40; }
   body.theme-dark .sheet-item:hover { background: #252836; border-color: #7B8FF7; }
   body.theme-dark .sheet-item.selected { background: #2A3050; border-color: #7B8FF7; }
-  body.theme-dark .sheet-item .sheet-name { color: #B4B8D0; }
-  body.theme-dark .sheet-item .sheet-rows { color: #5C6078; }
+  body.theme-dark .file-sheet-group .file-group-header { color: #D0D4EC; background: #252836; }
+  body.theme-dark .sheet-item .sheet-name { color: #D0D4EC; }
+  body.theme-dark .sheet-item .sheet-rows { color: #9A9EB6; }
   body.theme-dark .sheet-preview-btn:hover { background: #2A2D40; }
   body.theme-dark .sheet-preview { background: #181A22; }
   body.theme-dark .sheet-preview th { background: #252836; color: #9A9EB6; }
@@ -2682,7 +2720,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
             <div class="toggle-text">自动对齐列顺序</div>
             <label class="toggle"><input type="checkbox" id="multiAlignByName" checked onchange="multiUpdateHeaderGuidance()"><span class="slider"></span></label>
           </div>
-          <div style="font-size:12px;color:var(--gray-500);line-height:1.6;margin-top:-2px;">上下追加时会保留原表中能够对应的合并单元格；按字段匹配会重排行列，不复制原合并区域。</div>
+          <div style="font-size:12px;color:var(--gray-500);line-height:1.6;margin-top:-2px;">上下追加时会保留原表中能够对应的合并单元格，包括跨行和跨列的标题合并；按字段匹配会重排行列，不复制原合并区域。</div>
           <div class="toggle-row" id="multiMergeHeaderRow">
             <div class="toggle-text">合并大标题</div>
             <div style="display:flex;align-items:center;gap:8px;">
@@ -3842,6 +3880,14 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     </div>
     <div class="changelog-body">
       <div class="changelog-entry">
+        <div class="changelog-date">2026-10-21</div>
+        <ul>
+          <li>多文件合并新增 Sheet 快速选择：可按每个文件的第 1、2 个工作表选择，也可以搜索关键词选中名称包含关键词的工作表。</li>
+          <li>多文件追加合并保留原表的跨行、跨列和标题行合并单元格，并按输出位置映射合并范围。</li>
+          <li>修复夜间模式下工作表选择区域文字对比度不足的问题，工作表名称、行数和快捷选择提示在深色背景下更清晰。</li>
+        </ul>
+      </div>
+      <div class="changelog-entry">
         <div class="changelog-date">2026-08-21</div>
         <ul>
           <li>表格拆分新增“按字段拆成多个 Sheet”：选择字段列后，相同字段值归入同一个 Sheet，每个 Sheet 自动重复保留表头；空白字段归入“空白”Sheet，并自动处理非法、重复和超长的工作表名。</li>
@@ -4860,10 +4906,18 @@ function multiRenderSheetSelector(){
     for(const n of common) if(!s.has(n)) common.delete(n);
   }
   const commonArr=Array.from(common);
-  if(commonArr.length>0){
+  const currentKeyword=document.getElementById('multiSheetKeyword')?.value||'';
+  const maxSheetCount=multiFiles.reduce((max,file)=>Math.max(max,file.sheets.length),0);
+  if(multiFiles.length&&maxSheetCount){
+    const positionCount=Math.min(maxSheetCount,5);
+    const positionButtons=Array.from({length:positionCount},(_,index)=>`<button class="multi-sheet-shortcut-btn" onclick="multiSelectByPosition(${index})">第${index+1}个 Sheet</button>`).join('');
+    const commonBlock=commonArr.length?`<div class="multi-sheet-shortcut-group"><div class="multi-sheet-shortcut-label"><span>🔍</span><span>共有工作表</span><span class="multi-sheet-shortcut-note">名称完全相同</span></div><div class="multi-sheet-shortcut-buttons">`+
+      commonArr.map(n=>`<button class="multi-sheet-shortcut-btn" onclick="multiSelectOnlyByName('${esc(n.replace(/'/g,"\\'"))}')">${esc(n)}</button>`).join('')+
+      `</div></div>`:'';
     batchEl.style.display='';
-    batchEl.innerHTML=`<div style="font-size:12px;color:var(--gray-500);margin-bottom:4px;">🔍 共有工作表 — 点击切换：</div><div style="display:flex;flex-wrap:wrap;gap:6px;">`+
-      commonArr.map(n=>`<button class="select-all-btn" onclick="multiSelectOnlyByName('${esc(n.replace(/'/g,"\\'"))}')">${esc(n)}</button>`).join('')+
+    batchEl.innerHTML=`<div class="multi-sheet-shortcuts">${commonBlock}`+
+      `<div class="multi-sheet-shortcut-group"><div class="multi-sheet-shortcut-label"><span>📑</span><span>按位置选择</span><span class="multi-sheet-shortcut-note">每个文件选择相同顺序的工作表</span></div><div class="multi-sheet-shortcut-buttons">${positionButtons}</div></div>`+
+      `<div class="multi-sheet-shortcut-group"><div class="multi-sheet-shortcut-label"><span>🔎</span><span>按关键词选中</span><span class="multi-sheet-shortcut-note">匹配所有文件中的工作表名称</span></div><div class="multi-sheet-keyword-row"><input id="multiSheetKeyword" class="multi-sheet-keyword-input" type="search" value="${esc(currentKeyword)}" placeholder="例如：8月" onkeydown="if(event.key==='Enter')multiSelectByKeywordFromInput()"><button class="multi-sheet-keyword-btn" onclick="multiSelectByKeywordFromInput()">搜索并选中</button></div></div>`+
       `</div>`;
   }else{ batchEl.style.display='none'; batchEl.innerHTML=''; }
 
@@ -4895,6 +4949,33 @@ function multiRenderSheetSelector(){
 function multiToggleSheetExpand(){ multiSheetExpanded=!multiSheetExpanded; multiRenderSheetSelector(); }
 function multiToggleFile(fi){ const f=multiFiles[fi]; const all=f.sheets.every(s=>s.selected); f.sheets.forEach(s=>s.selected=!all); multiRenderSheetSelector(); }
 function multiToggleSheet(fi,si){ multiFiles[fi].sheets[si].selected=!multiFiles[fi].sheets[si].selected; multiRenderSheetSelector(); }
+function multiSelectByPosition(position){
+  const index=Math.max(0,Number(position)||0);
+  let selected=0;
+  multiFiles.forEach(file=>{
+    file.sheets.forEach(sheet=>{ sheet.selected=false; });
+    if(file.sheets[index]){ file.sheets[index].selected=true; selected++; }
+  });
+  multiResetNameBtnState();
+  multiRenderSheetSelector();
+  showToast(`已选中每个文件的第 ${index+1} 个工作表（${selected} 个）`,'success');
+}
+function multiSelectByKeyword(keyword){
+  const query=String(keyword||'').trim().toLowerCase();
+  if(!query){ showToast('请输入要搜索的工作表关键词','info'); return; }
+  let selected=0;
+  multiFiles.forEach(file=>file.sheets.forEach(sheet=>{
+    sheet.selected=String(sheet.name||'').toLowerCase().includes(query);
+    if(sheet.selected)selected++;
+  }));
+  multiResetNameBtnState();
+  multiRenderSheetSelector();
+  showToast(selected?`已按“${String(keyword).trim()}”选中 ${selected} 个工作表`:'没有找到包含该关键词的工作表',selected?'success':'info');
+}
+function multiSelectByKeywordFromInput(){
+  const input=document.getElementById('multiSheetKeyword');
+  multiSelectByKeyword(input?.value||'');
+}
 let currentPreviewKey=null; // 记录当前预览的 sheet 键值
 function multiTogglePreview(fi,si){
   const key=`${fi}-${si}`;
@@ -5317,6 +5398,7 @@ function multiMapMergedRanges(sourceSheets,options={}){
   if(options.preserve===false)return [];
   const sourceHeaderRows=Math.max(0,Number(options.sourceHeaderRows??options.headerRows)||0);
   const outputHeaderRows=Math.max(0,Number(options.outputHeaderRows??options.headerRows)||0);
+  const compressedHeaderRows=Math.max(0,Number(options.compressedHeaderRows)||0);
   const rowMaps=options.rowMaps||[];
   const columnMaps=options.columnMaps||[];
   const output=[];
@@ -5334,7 +5416,11 @@ function multiMapMergedRanges(sourceSheets,options={}){
       for(let row=merge.s.r;row<=merge.e.r;row++){
         let mappedRow;
         if(sourceHeaderRows>0&&row<sourceHeaderRows){
-          mappedRow=row;
+          if(compressedHeaderRows>0){
+            mappedRow=row<compressedHeaderRows?0:row-compressedHeaderRows+1;
+          }else{
+            mappedRow=row;
+          }
         }else{
           const dataRow=rowMaps[sheetIndex]?.get(row);
           if(!Number.isInteger(dataRow)){valid=false;break;}
@@ -5343,8 +5429,9 @@ function multiMapMergedRanges(sourceSheets,options={}){
         outputRows.push(mappedRow);
       }
       if(!valid||!outputRows.length)return;
-      for(let i=1;i<outputRows.length;i++){
-        if(outputRows[i]!==outputRows[0]+i){valid=false;break;}
+      const compactRows=outputRows.filter((row,index)=>index===0||row!==outputRows[index-1]);
+      for(let i=1;i<compactRows.length;i++){
+        if(compactRows[i]!==compactRows[0]+i){valid=false;break;}
       }
       if(!valid)return;
 
@@ -5360,7 +5447,7 @@ function multiMapMergedRanges(sourceSheets,options={}){
         if(outputCols[i]!==outputCols[0]+i){valid=false;break;}
       }
       if(!valid)return;
-      const mapped={s:{r:outputRows[0],c:outputCols[0]},e:{r:outputRows[outputRows.length-1],c:outputCols[outputCols.length-1]}};
+      const mapped={s:{r:compactRows[0],c:outputCols[0]},e:{r:compactRows[compactRows.length-1],c:outputCols[outputCols.length-1]}};
       const key=`${mapped.s.r}:${mapped.s.c}:${mapped.e.r}:${mapped.e.c}`;
       if(!seen.has(key)){seen.add(key);output.push(mapped);}
     });
@@ -5500,7 +5587,7 @@ function multiBuildMergedResult(allSheets){
     allSheets.forEach((sh,shIdx)=>{
       const data=sh.data; if(!data.length)return;
       const maxSourceCols=Math.max(...data.map(row=>(row||[]).length),0);
-      mergeColumnMaps[shIdx]=new Map(Array.from({length:maxSourceCols},(_,ci)=>[ci,ci+(addSrc?1:0)]));
+      mergeColumnMaps[shIdx]=new Map(Array.from({length:maxSourceCols},(_,ci)=>[ci,(addSrc?1:0)+ci]));
       const start=headerRows;
       for(let ri=start;ri<data.length;ri++){
         const row=data[ri]||[];
@@ -5524,12 +5611,11 @@ function multiBuildMergedResult(allSheets){
     allSheets.forEach((sh,idx)=>{
       const data=sh.data; if(!data.length)return;
       const maxSourceCols=Math.max(...data.map(row=>(row||[]).length),0);
-      mergeColumnMaps[idx]=new Map(Array.from({length:maxSourceCols},(_,ci)=>[ci,ci+(addSrc?1:0)]));
+      mergeColumnMaps[idx]=new Map(Array.from({length:maxSourceCols},(_,ci)=>[ci,(addSrc?1:0)+ci]));
       data.forEach((row,rowIndex)=>{
         if(skipEmpty&&row.every(c=>c===''||c==null)&&!mergedSourceRows[idx].has(rowIndex))return;
         const p=[...row]; if(addSrc)p.unshift(srcMode==='custom'?srcTxt:sh.fileName+' - '+sh.sheetName);
-        rows.push(p); if(headers.length<p.length){ while(headers.length<p.length)headers.push('列'+(headers.length+1)); }
-        rowOrigins.push({sheet:idx,row:rowIndex});
+        rows.push(p); rowOrigins.push({sheet:idx,row:rowIndex}); if(headers.length<p.length){ while(headers.length<p.length)headers.push('列'+(headers.length+1)); }
       });
       if(addSrc&&headers[0]!=='来源')headers.unshift('来源');
     });
@@ -5548,8 +5634,10 @@ function multiBuildMergedResult(allSheets){
   rows=rows.map(r=>{ while(r.length>headers.length)r.pop(); while(r.length<headers.length)r.push(''); return r; });
 
   // 合并标题行单元格：将前 N 行表头用 / 合并为一行
+  let mergedHeaderRows=0;
   if(headerRows>1 && headerRows_raw && document.getElementById('multiMergeHdr').checked){
     const mergeRows=Math.min(parseInt(document.getElementById('multiMergeHdrRows').value)||1, headerRows_raw.length);
+    mergedHeaderRows=mergeRows;
     const mergedHdr=new Array(headerRows_raw[0].length).fill('');
     for(let ri=0;ri<mergeRows;ri++){
       for(let ci=0;ci<headerRows_raw[ri].length;ci++){
@@ -5568,7 +5656,7 @@ function multiBuildMergedResult(allSheets){
     headers,
     rows,
     headerRows_raw:headerRows_raw||null,
-    merges:multiMapMergedRanges(allSheets,{sourceHeaderRows:headerRows,outputHeaderRows,rowMaps,columnMaps:mergeColumnMaps,preserve:!horizontal})
+    merges:multiMapMergedRanges(allSheets,{sourceHeaderRows:headerRows,outputHeaderRows,rowMaps,columnMaps:mergeColumnMaps,preserve:!horizontal,compressedHeaderRows:mergedHeaderRows})
   };
 }
 
@@ -5652,7 +5740,9 @@ function multiExportXLSX(){
       const mergeEndC=nCols-1;
       if(mergeStartC<mergeEndC){
         for(let ri=0;ri<mergeRows;ri++){
-          merges.push({s:{r:ri,c:mergeStartC},e:{r:ri,c:mergeEndC}});
+          const synthetic={s:{r:ri,c:mergeStartC},e:{r:ri,c:mergeEndC}};
+          const overlaps=merges.some(merge=>merge.s.r<=ri&&merge.e.r>=ri&&merge.s.c<=synthetic.e.c&&merge.e.c>=synthetic.s.c);
+          if(!overlaps)merges.push(synthetic);
         }
       }
     }

@@ -94,6 +94,81 @@ test('ignored blank rows that continue a merged range stay in the append result'
   ]);
 });
 
+test('horizontal title and data merges keep their original columns', () => {
+  const build = loadMergedBuilder();
+  const result = build([{
+    fileName: 'Book3.xlsx',
+    sheetName: 'Sheet1',
+    data: [['标题', '', ''], ['a', 'b', 'c'], [1, 2, 3]],
+    merges: [
+      { s: { r: 0, c: 0 }, e: { r: 0, c: 2 } },
+      { s: { r: 1, c: 0 }, e: { r: 1, c: 1 } }
+    ]
+  }]);
+  assert.deepEqual(JSON.parse(JSON.stringify(result.merges)), [
+    { s: { r: 0, c: 0 }, e: { r: 0, c: 2 } },
+    { s: { r: 1, c: 0 }, e: { r: 1, c: 1 } }
+  ]);
+});
+
+test('compressed multi-row headers preserve horizontal merges in every output header row', () => {
+  const build = loadMergedBuilder({
+    multiHeaderRows: { value: '2' },
+    multiMergeHdr: { checked: true },
+    multiMergeHdrRows: { value: '1' }
+  });
+  const result = build([{
+    fileName: 'Book3.xlsx',
+    sheetName: 'Sheet1',
+    data: [['总标题', '', ''], ['分组', '名称', '值'], [1, 2, 3]],
+    merges: [
+      { s: { r: 0, c: 0 }, e: { r: 0, c: 2 } },
+      { s: { r: 1, c: 0 }, e: { r: 1, c: 1 } }
+    ]
+  }]);
+  assert.deepEqual(JSON.parse(JSON.stringify(result.merges)), [
+    { s: { r: 0, c: 0 }, e: { r: 0, c: 2 } },
+    { s: { r: 1, c: 0 }, e: { r: 1, c: 1 } }
+  ]);
+});
+
+test('title-row compression collapses source header merges without shifting data merges', () => {
+  const build = loadMergedBuilder({
+    multiHeaderRows: { value: '2' },
+    multiMergeHdr: { checked: true },
+    multiMergeHdrRows: { value: '2' }
+  });
+  const result = build([{
+    fileName: 'Book3.xlsx',
+    sheetName: 'Sheet1',
+    data: [['分组', ''], ['a', 'b'], ['value', 1], ['', 2]],
+    merges: [
+      { s: { r: 0, c: 0 }, e: { r: 1, c: 1 } },
+      { s: { r: 2, c: 0 }, e: { r: 3, c: 0 } }
+    ]
+  }]);
+  assert.deepEqual(JSON.parse(JSON.stringify(result.merges)), [
+    { s: { r: 0, c: 0 }, e: { r: 0, c: 1 } },
+    { s: { r: 1, c: 0 }, e: { r: 2, c: 0 } }
+  ]);
+});
+
+test('title-row compression keeps merges in later uncompressed header rows', () => {
+  const build = loadMergedBuilder({
+    multiHeaderRows: { value: '3' },
+    multiMergeHdr: { checked: true },
+    multiMergeHdrRows: { value: '1' }
+  });
+  const result = build([{
+    fileName: 'Book3.xlsx',
+    sheetName: 'Sheet1',
+    data: [['总表', '', ''], ['分组', '名称', '值'], ['', '', ''], ['value', 'x', 1]],
+    merges: [{ s: { r: 2, c: 0 }, e: { r: 2, c: 1 } }]
+  }]);
+  assert.deepEqual(JSON.parse(JSON.stringify(result.merges)), [
+    { s: { r: 2, c: 0 }, e: { r: 2, c: 1 } }
+  ]);
+});
 test('worker parser carries native worksheet merge ranges into the selected sheet data', () => {
   const start = html.indexOf('function multiBuildWorkbookWorkerSource(');
   const end = html.indexOf('\nfunction multiCreateWorkbookWorker(', start);
