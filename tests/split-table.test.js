@@ -162,14 +162,25 @@ test('cut positions stay on the same rows when groups have different lengths', (
   const layout = JSON.parse(JSON.stringify(splitBuildCutLayout(pages, 1, 18)));
 
   assert.equal(layout.requiredRows, 13);
-  assert.deepEqual(layout.slotRows, [8, 7, 3]);
-  assert.deepEqual(layout.cutRows, [8, 15]);
+  assert.deepEqual(layout.slotRows, [9, 7, 2]);
+  assert.deepEqual(layout.cutRows, [9, 16]);
   assert.equal(layout.slotRows.reduce((sum, count) => sum + count, 0), 18);
   for (const page of pages) {
     page.forEach((group, slot) => {
       assert.ok(group === null || 1 + group.length <= layout.slotRows[slot]);
     });
   }
+});
+
+test('cut layout distributes spare rows between tables instead of below the last table', () => {
+  const { splitBuildCutLayout } = loadSplitHelpers();
+  const pages = [[['A'], ['B'], ['C'], ['D']]];
+  const layout = JSON.parse(JSON.stringify(splitBuildCutLayout(pages, 1, 20)));
+
+  assert.deepEqual(layout.slotRows, [6, 6, 6, 2]);
+  assert.deepEqual(layout.cutRows, [6, 12, 18]);
+  assert.equal(layout.slotRows[3], 2);
+  assert.equal(layout.slotRows.reduce((sum, count) => sum + count, 0), 20);
 });
 
 test('cut layout refuses pages that would split a long table', () => {
@@ -188,14 +199,14 @@ test('table output pads shorter groups and repeats each cut line at the same row
 
   assert.equal(result.pages, 2);
   assert.equal(result.totalRows, 24);
-  assert.deepEqual(Array.from(result.cutAfterRows), [7, 19]);
-  assert.equal(result.rows[7][0], '组');
-  assert.equal(result.rows[19][0], '组');
-  assert.equal(result.isBlankRow[6], true);
-  assert.equal(result.isBlankRow[18], true);
+  assert.deepEqual(Array.from(result.cutAfterRows), [8, 20]);
+  assert.equal(result.rows[8][0], '组');
+  assert.equal(result.rows[20][0], '组');
+  assert.equal(result.isBlankRow[7], true);
+  assert.equal(result.isBlankRow[19], true);
   assert.match(elements.splitPreviewTable.innerHTML, /split-cut-guide/);
   const worksheet = runSplitExport(result);
-  for (const rowNumber of [7, 19]) {
+  for (const rowNumber of [8, 20]) {
     assert.equal(worksheet.getRow(rowNumber).getCell(1).value, '✂ 沿虚线裁剪');
     assert.equal(worksheet.getRow(rowNumber).getCell(1).border.bottom.style, 'mediumDashed');
     assert.equal(worksheet.getRow(rowNumber).getCell(2).border.bottom.style, 'mediumDashed');

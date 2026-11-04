@@ -3394,7 +3394,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
           </div>
 
           <div style="font-size:12px;color:var(--gray-400);line-height:1.6;margin-top:4px;">
-            💡 导出文件会按“将所有列打印在一页”设置；先在打印预览查看每页实际行数 → 填入上方“每页行数”，再由系统调整表格之间的空隙行。
+            💡 导出文件会按“将所有列打印在一页”设置；先在打印预览查看每页实际行数 → 填入上方“每页行数”，再由系统把余量优先均分到表格之间，避免空行堆在最后。
           </div>
         </div>
       </details>
@@ -10716,8 +10716,17 @@ function splitBuildCutLayout(pageGroupsList, headerRows, rowsPerPage) {
   const requiredRows = minimumSlotRows.reduce((sum, count) => sum + count, 0);
   if (requiredRows > rowsPerPage) return { requiredRows, slotRows: [], cutRows: [] };
   const spareRows = rowsPerPage - requiredRows;
-  const eachSlot = Math.floor(spareRows / slotCount);
-  const slotRows = minimumSlotRows.map((count, slot) => count + eachSlot + (slot < spareRows % slotCount ? 1 : 0));
+  // Spare rows are print gaps. Keep the last slot at its required height so
+  // unused space is placed between tables instead of collecting below the
+  // final table on the page. A single-table page has no internal gap, so it
+  // keeps the spare rows in its only slot.
+  const gapSlotCount = slotCount > 1 ? slotCount - 1 : 1;
+  const eachGap = Math.floor(spareRows / gapSlotCount);
+  const extraGaps = spareRows % gapSlotCount;
+  const slotRows = minimumSlotRows.map((count, slot) => {
+    if (slot >= gapSlotCount) return count;
+    return count + eachGap + (slot < extraGaps ? 1 : 0);
+  });
   const cutRows = [];
   let endRow = 0;
   for (let slot = 0; slot < slotCount - 1; slot++) {
