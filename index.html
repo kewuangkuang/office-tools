@@ -11079,31 +11079,39 @@ function splitExecute() {
       currentRow++;
     }
   };
+  const appendGroup = group => {
+    // Header rows
+    for (let hr = 0; hr < headerRows; hr++) {
+      outRows[currentRow] = [];
+      for (let c = 0; c < maxCols; c++) outRows[currentRow][c] = (c < (headers[hr] || []).length) ? headers[hr][c] : '';
+      rowHeights[currentRow] = (hr === 0 && mergeFirst) ? firstRowH : rowHeightVal;
+      isBlankRow[currentRow] = false;
+      isHeaderRow[currentRow] = true;
+      currentRow++;
+    }
+    // Data rows
+    for (const dRow of group) {
+      outRows[currentRow] = [];
+      for (let c = 0; c < maxCols; c++) outRows[currentRow][c] = (c < dRow.length) ? dRow[c] : '';
+      rowHeights[currentRow] = rowHeightVal;
+      isBlankRow[currentRow] = false;
+      isHeaderRow[currentRow] = false;
+      currentRow++;
+    }
+  };
   for (const pageGroups of pageGroupsList) {
     for (let gi = 0; gi < pageGroups.length; gi++) {
       const group = pageGroups[gi];
       if (group == null) {
         appendBlankRows(cutLayout.slotRows[gi], mergeFirst && headerRows > 0);
       } else {
-        // Header rows
-        for (let hr = 0; hr < headerRows; hr++) {
-          outRows[currentRow] = [];
-          for (let c = 0; c < maxCols; c++) outRows[currentRow][c] = (c < (headers[hr] || []).length) ? headers[hr][c] : '';
-          rowHeights[currentRow] = (hr === 0 && mergeFirst) ? firstRowH : rowHeightVal;
-          isBlankRow[currentRow] = false;
-          isHeaderRow[currentRow] = true;
-          currentRow++;
-        }
-        // Data rows
-        for (const dRow of group) {
-          outRows[currentRow] = [];
-          for (let c = 0; c < maxCols; c++) outRows[currentRow][c] = (c < dRow.length) ? dRow[c] : '';
-          rowHeights[currentRow] = rowHeightVal;
-          isBlankRow[currentRow] = false;
-          isHeaderRow[currentRow] = false;
-          currentRow++;
-        }
-        appendBlankRows(cutLayout.slotRows[gi] - headerRows - group.length);
+        const slotPadding = cutLayout.slotRows[gi] - headerRows - group.length;
+        // A short final slot would otherwise leave all of its alignment
+        // padding below the last table. Move that padding before the table so
+        // the page ends with actual table rows while cut rows stay aligned.
+        if (gi === pageGroups.length - 1) appendBlankRows(slotPadding);
+        appendGroup(group);
+        if (gi !== pageGroups.length - 1) appendBlankRows(slotPadding);
       }
     }
   }

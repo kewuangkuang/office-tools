@@ -200,10 +200,13 @@ test('table output pads shorter groups and repeats each cut line at the same row
   assert.equal(result.pages, 2);
   assert.equal(result.totalRows, 24);
   assert.deepEqual(Array.from(result.cutAfterRows), [8, 20]);
-  assert.equal(result.rows[8][0], '组');
+  assert.equal(result.rows[8][0], '');
+  assert.equal(result.rows[9][0], '组');
   assert.equal(result.rows[20][0], '组');
   assert.equal(result.isBlankRow[7], true);
   assert.equal(result.isBlankRow[19], true);
+  assert.equal(result.isBlankRow[11], false);
+  assert.equal(result.rows[11][0], 'C');
   assert.match(elements.splitPreviewTable.innerHTML, /split-cut-guide/);
   const worksheet = runSplitExport(result);
   for (const rowNumber of [8, 20]) {
