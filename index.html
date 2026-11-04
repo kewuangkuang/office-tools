@@ -10715,25 +10715,46 @@ function splitBuildCutLayout(pageGroupsList, headerRows, rowsPerPage) {
   }
   const requiredRows = minimumSlotRows.reduce((sum, count) => sum + count, 0);
   if (requiredRows > rowsPerPage) return { requiredRows, slotRows: [], cutRows: [] };
-  const spareRows = rowsPerPage - requiredRows;
-  // Spare rows are print gaps. Keep the last slot at its required height so
-  // unused space is placed between tables instead of collecting below the
-  // final table on the page. A single-table page has no internal gap, so it
-  // keeps the spare rows in its only slot.
-  const gapSlotCount = slotCount > 1 ? slotCount - 1 : 1;
-  const eachGap = Math.floor(spareRows / gapSlotCount);
-  const extraGaps = spareRows % gapSlotCount;
-  const slotRows = minimumSlotRows.map((count, slot) => {
-    if (slot >= gapSlotCount) return count;
-    return count + eachGap + (slot < extraGaps ? 1 : 0);
+  const buildGapLayout = minimumRows => {
+    const pageRequiredRows = minimumRows.reduce((sum, count) => sum + count, 0);
+    const spareRows = rowsPerPage - pageRequiredRows;
+    // Spare rows are print gaps. Keep the last slot at its required height so
+    // unused space is placed between tables instead of collecting below the
+    // final table on the page. A single-table page has no internal gap, so it
+    // keeps the spare rows in its only slot.
+    const gapSlotCount = minimumRows.length > 1 ? minimumRows.length - 1 : 1;
+    const eachGap = Math.floor(spareRows / gapSlotCount);
+    const extraGaps = spareRows % gapSlotCount;
+    const slotRows = minimumRows.map((count, slot) => {
+      if (slot >= gapSlotCount) return count;
+      return count + eachGap + (slot < extraGaps ? 1 : 0);
+    });
+    const cutRows = [];
+    let endRow = 0;
+    for (let slot = 0; slot < slotRows.length - 1; slot++) {
+      endRow += slotRows[slot];
+      cutRows.push(endRow);
+    }
+    return { requiredRows: pageRequiredRows, slotRows, cutRows };
+  };
+  const layout = buildGapLayout(minimumSlotRows);
+  // A final page may contain fewer tables than the selected slot count. Do
+  // not preserve those trailing empty slots: compact the real tables and
+  // redistribute their rows into the gaps between them.
+  const pageLayouts = pageGroupsList.map(pageGroups => {
+    let lastGroupSlot = pageGroups.length - 1;
+    while (lastGroupSlot >= 0 && pageGroups[lastGroupSlot] == null) lastGroupSlot--;
+    if (lastGroupSlot < 0) {
+      return { groups: [null], slotRows: [rowsPerPage], cutRows: [] };
+    }
+    if (lastGroupSlot === slotCount - 1) {
+      return { groups: pageGroups, slotRows: layout.slotRows, cutRows: layout.cutRows };
+    }
+    const groups = pageGroups.slice(0, lastGroupSlot + 1);
+    const compactLayout = buildGapLayout(groups.map(group => Math.max(1, headerRows + group.length)));
+    return { groups, slotRows: compactLayout.slotRows, cutRows: compactLayout.cutRows };
   });
-  const cutRows = [];
-  let endRow = 0;
-  for (let slot = 0; slot < slotCount - 1; slot++) {
-    endRow += slotRows[slot];
-    cutRows.push(endRow);
-  }
-  return { requiredRows, slotRows, cutRows };
+  return { requiredRows, slotRows: layout.slotRows, cutRows: layout.cutRows, pageLayouts };
 }
 
 function splitSetMode(mode) {
@@ -11099,26 +11120,33 @@ function splitExecute() {
       currentRow++;
     }
   };
-  for (const pageGroups of pageGroupsList) {
-    for (let gi = 0; gi < pageGroups.length; gi++) {
-      const group = pageGroups[gi];
+  for (let pageIndex = 0; pageIndex < pageGroupsList.length; pageIndex++) {
+    const pageLayout = cutLayout.pageLayouts?.[pageIndex] || {
+      groups: pageGroupsList[pageIndex],
+      slotRows: cutLayout.slotRows,
+      cutRows: cutLayout.cutRows
+    };
+    const groups = pageLayout.groups;
+    for (let gi = 0; gi < groups.length; gi++) {
+      const group = groups[gi];
       if (group == null) {
-        appendBlankRows(cutLayout.slotRows[gi], mergeFirst && headerRows > 0);
+        appendBlankRows(pageLayout.slotRows[gi], mergeFirst && headerRows > 0);
       } else {
-        const slotPadding = cutLayout.slotRows[gi] - headerRows - group.length;
+        const slotPadding = pageLayout.slotRows[gi] - headerRows - group.length;
         // A short final slot would otherwise leave all of its alignment
         // padding below the last table. Move that padding before the table so
         // the page ends with actual table rows while cut rows stay aligned.
-        if (gi === pageGroups.length - 1) appendBlankRows(slotPadding);
+        if (gi === groups.length - 1) appendBlankRows(slotPadding);
         appendGroup(group);
-        if (gi !== pageGroups.length - 1) appendBlankRows(slotPadding);
+        if (gi !== groups.length - 1) appendBlankRows(slotPadding);
       }
     }
   }
 
   const cutAfterRows = new Set();
   for (let page = 0; page < pageGroupsList.length; page++) {
-    for (const cutRow of cutLayout.cutRows) cutAfterRows.add(page * rowsPerPage + cutRow);
+    const pageLayout = cutLayout.pageLayouts?.[page] || cutLayout;
+    for (const cutRow of pageLayout.cutRows) cutAfterRows.add(page * rowsPerPage + cutRow);
   }
   splitMergedData = { rows: outRows, rowHeights, isBlankRow, isHeaderRow, headerRows, mergeFirst, maxCols, tableCount: tableGroups.length, totalRows: currentRow, pages: pageGroupsList.length, rowsPerPage, cutAfterRows: Array.from(cutAfterRows) };
 

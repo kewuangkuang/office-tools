@@ -46,9 +46,9 @@ function loadSplitHelpers(values = {}) {
   return context.api;
 }
 
-function runSplitExecute(data, rowsPerPage) {
+function runSplitExecute(data, rowsPerPage, tablesPerPage = 2) {
   const elements = {
-    splitHeaderRows: { value: '1' }, splitTablesPerPage: { value: '2' },
+    splitHeaderRows: { value: '1' }, splitTablesPerPage: { value: String(tablesPerPage) },
     splitRowsPerPage: { value: String(rowsPerPage) }, splitRowHeight: { value: '13.5' },
     splitMergeFirst: { checked: false }, splitFirstRowH: { value: '20' },
     splitCol: { value: '1' }, splitStats: { innerHTML: '' },
@@ -183,6 +183,32 @@ test('cut layout distributes spare rows between tables instead of below the last
   assert.equal(layout.slotRows.reduce((sum, count) => sum + count, 0), 20);
 });
 
+test('incomplete pages compact trailing empty slots and reuse their rows between tables', () => {
+  const { splitBuildCutLayout } = loadSplitHelpers();
+  const pages = [
+    [['A'], ['B'], ['C'], ['D']],
+    [['E'], ['F'], ['G'], null]
+  ];
+  const layout = JSON.parse(JSON.stringify(splitBuildCutLayout(pages, 1, 20)));
+
+  assert.deepEqual(layout.pageLayouts[1].groups, [['E'], ['F'], ['G']]);
+  assert.deepEqual(layout.pageLayouts[1].slotRows, [9, 9, 2]);
+  assert.deepEqual(layout.pageLayouts[1].cutRows, [9, 18]);
+  assert.equal(layout.pageLayouts[1].slotRows.reduce((sum, count) => sum + count, 0), 20);
+});
+
+test('split output ends incomplete pages with table rows', () => {
+  const data = [['组']];
+  for (let index = 1; index <= 13; index++) data.push([`G${index}`]);
+  const { result } = runSplitExecute(data, 20, 4);
+
+  assert.equal(result.pages, 4);
+  assert.equal(result.totalRows, 80);
+  assert.equal(result.isBlankRow[39], false);
+  assert.equal(result.isBlankRow[59], false);
+  assert.equal(result.isBlankRow[79], false);
+});
+
 test('cut layout refuses pages that would split a long table', () => {
   const { splitBuildCutLayout } = loadSplitHelpers();
   const layout = JSON.parse(JSON.stringify(splitBuildCutLayout([[[1, 2, 3, 4], [1, 2, 3]]], 1, 8)));
@@ -233,7 +259,8 @@ test('split table UI exposes both page ordering choices and passes the selected 
   assert.match(html, /onclick="splitSetOrder\('page'\)"/);
   assert.match(html, /splitBuildPageGroups\(tableGroups, tablesPerPage, splitOrder\)/);
   assert.match(html, /splitBuildCutLayout\(pageGroupsList, headerRows, rowsPerPage\)/);
-  assert.match(html, /appendBlankRows\(cutLayout\.slotRows\[gi\], mergeFirst && headerRows > 0\)/);
+  assert.match(html, /appendBlankRows\(pageLayout\.slotRows\[gi\], mergeFirst && headerRows > 0\)/);
+  assert.match(html, /cutLayout\.pageLayouts\?\.\[pageIndex\]/);
   assert.match(html, /cutAfterRows: Array\.from\(cutAfterRows\)/);
   assert.match(html, /沿虚线裁剪/);
   assert.match(html, /保留空白位置/);
