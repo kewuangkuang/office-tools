@@ -11088,15 +11088,17 @@ function splitExecute() {
   const rowHeights = [];
   const isBlankRow = []; // track which rows are blank gaps (for preview)
   const isReservedSlotRow = []; // blank rows belonging to a white slot, not an adjustable gap
+  const isTailFillRow = []; // blank rows before a short final table, used to push it down
   const isHeaderRow = []; // track which rows are header rows (for styling)
   let currentRow = 0;
-  const appendBlankRows = (count, matchTitleHeight = false, reservedSlot = false) => {
+  const appendBlankRows = (count, matchTitleHeight = false, reservedSlot = false, tailFill = false) => {
     for (let b = 0; b < count; b++) {
       outRows[currentRow] = [];
       for (let c = 0; c < maxCols; c++) outRows[currentRow][c] = '';
       rowHeights[currentRow] = b === 0 && matchTitleHeight ? firstRowH : rowHeightVal;
       isBlankRow[currentRow] = true;
       isReservedSlotRow[currentRow] = reservedSlot;
+      isTailFillRow[currentRow] = tailFill;
       isHeaderRow[currentRow] = false;
       currentRow++;
     }
@@ -11109,6 +11111,7 @@ function splitExecute() {
       rowHeights[currentRow] = (hr === 0 && mergeFirst) ? firstRowH : rowHeightVal;
       isBlankRow[currentRow] = false;
       isReservedSlotRow[currentRow] = false;
+      isTailFillRow[currentRow] = false;
       isHeaderRow[currentRow] = true;
       currentRow++;
     }
@@ -11119,6 +11122,7 @@ function splitExecute() {
       rowHeights[currentRow] = rowHeightVal;
       isBlankRow[currentRow] = false;
       isReservedSlotRow[currentRow] = false;
+      isTailFillRow[currentRow] = false;
       isHeaderRow[currentRow] = false;
       currentRow++;
     }
@@ -11139,7 +11143,7 @@ function splitExecute() {
         // A short final slot would otherwise leave all of its alignment
         // padding below the last table. Move that padding before the table so
         // the page ends with actual table rows while cut rows stay aligned.
-        if (gi === groups.length - 1) appendBlankRows(slotPadding, false, true);
+        if (gi === groups.length - 1) appendBlankRows(slotPadding, false, false, true);
         appendGroup(group);
         if (gi !== groups.length - 1) appendBlankRows(slotPadding);
       }
@@ -11151,7 +11155,7 @@ function splitExecute() {
     const pageLayout = cutLayout.pageLayouts?.[page] || cutLayout;
     for (const cutRow of pageLayout.cutRows) cutAfterRows.add(page * outputRowsPerPage + cutRow);
   }
-  splitMergedData = { rows: outRows, rowHeights, isBlankRow, isReservedSlotRow, isHeaderRow, headerRows, mergeFirst, maxCols, tableCount: tableGroups.length, totalRows: currentRow, pages: pageGroupsList.length, rowsPerPage: outputRowsPerPage, cutAfterRows: Array.from(cutAfterRows) };
+  splitMergedData = { rows: outRows, rowHeights, isBlankRow, isReservedSlotRow, isTailFillRow, isHeaderRow, headerRows, mergeFirst, maxCols, tableCount: tableGroups.length, totalRows: currentRow, pages: pageGroupsList.length, rowsPerPage: outputRowsPerPage, cutAfterRows: Array.from(cutAfterRows) };
 
   document.getElementById('splitStats').innerHTML =
     '<div class="stat-item"><div class="stat-value">' + tableGroups.length + '</div><div class="stat-label">拆分表格数</div></div>' +
@@ -11322,7 +11326,7 @@ function splitExport() {
     splitExportFieldSheets(fileName);
     return;
   }
-  const { rows, rowHeights, mergeFirst, maxCols, headerRows, isBlankRow, isReservedSlotRow = [], isHeaderRow, rowsPerPage, cutAfterRows } = splitMergedData;
+  const { rows, rowHeights, mergeFirst, maxCols, headerRows, isBlankRow, isReservedSlotRow = [], isTailFillRow = [], isHeaderRow, rowsPerPage, cutAfterRows } = splitMergedData;
   const addBorders = document.getElementById('splitBorders').checked;
   const addStyles = document.getElementById('splitStyles').checked;
   const stdH = parseFloat(document.getElementById('splitRowHeight').value) || 12;
@@ -11442,17 +11446,21 @@ function splitExport() {
   const fitScale = Math.min(1, printableWidth / Math.max(1, totalColumnWidth));
   const targetPageHeight = printableHeight / Math.max(0.1, fitScale);
   const gapPages = [];
+  const tailPages = [];
   for (let pageStart = 0; pageStart < rows.length; pageStart += rowsPerPage) {
     const pageEnd = Math.min(rows.length, pageStart + rowsPerPage);
     const gapRows = [];
+    const tailRows = [];
     let fixedHeight = 0;
     for (let r = pageStart; r < pageEnd; r++) {
-      if (isBlankRow[r] && !isReservedSlotRow[r]) gapRows.push(r);
+      if (isBlankRow[r] && isTailFillRow[r]) tailRows.push(r);
+      else if (isBlankRow[r] && !isReservedSlotRow[r]) gapRows.push(r);
       else fixedHeight += rowHeights[r] != null ? rowHeights[r] : stdH;
     }
     if (gapRows.length) {
       gapPages.push({ gapRows, capacity: (targetPageHeight - fixedHeight) / gapRows.length });
     }
+    if (tailRows.length) tailPages.push({ gapRows, tailRows, fixedHeight });
   }
   // Use one common height for every adjustable gap. Per-page calculation made
   // each page distribute its spare height differently, which broke the fixed
@@ -11464,6 +11472,22 @@ function splitExport() {
       for (const r of page.gapRows) {
         rowHeights[r] = commonGapHeight;
         ws.getRow(r + 1).height = commonGapHeight;
+      }
+    }
+    for (const page of tailPages) {
+      const remainingHeight = targetPageHeight - page.fixedHeight - commonGapHeight * page.gapRows.length;
+      const tailHeight = Math.min(409, Math.max(stdH, remainingHeight / page.tailRows.length));
+      for (const r of page.tailRows) {
+        rowHeights[r] = tailHeight;
+        ws.getRow(r + 1).height = tailHeight;
+      }
+    }
+  } else {
+    for (const page of tailPages) {
+      const tailHeight = Math.min(409, Math.max(stdH, (targetPageHeight - page.fixedHeight) / page.tailRows.length));
+      for (const r of page.tailRows) {
+        rowHeights[r] = tailHeight;
+        ws.getRow(r + 1).height = tailHeight;
       }
     }
   }

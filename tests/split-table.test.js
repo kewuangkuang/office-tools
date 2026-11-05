@@ -294,6 +294,24 @@ test('export keeps missing trailing slots white while sharing one gap height', (
   assert.equal(worksheet.getRow(80).height, 13.5);
 });
 
+test('export moves a short final table down by expanding its leading white space', () => {
+  const data = [['组']];
+  const groups = [
+    ['A', 1], ['B', 10], ['C', 10], ['D', 10],
+    ['E', 10], ['F', 10], ['G', 10], ['H', 1]
+  ];
+  for (const [name, count] of groups) {
+    for (let index = 0; index < count; index++) data.push([name]);
+  }
+  const { result } = runSplitExecute(data, 50, 4);
+  const worksheet = runSplitExport(result);
+
+  assert.equal(result.pages, 2);
+  assert.equal(result.totalRows, 100);
+  assert.ok(worksheet.getRow(90).height > worksheet.getRow(2).height, `${worksheet.getRow(90).height} <= ${worksheet.getRow(2).height}`);
+  assert.equal(worksheet.getRow(100).height, 13.5);
+});
+
 test('table output stops when aligned slots cannot fit the selected page size', () => {
   const data = [['组'], ['A'], ['A'], ['A'], ['A'], ['B'], ['C'], ['C'], ['D'], ['D'], ['D']];
   const { result, toasts } = runSplitExecute(data, 8);
