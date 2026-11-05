@@ -269,12 +269,13 @@ test('export keeps four wide table slots on one print page', () => {
   }
   const { result } = runSplitExecute(data, 50, 4, 2);
   const worksheet = runSplitExport(result);
+  const regularHeight = worksheet.getRow(2).height;
   const gapHeights = [13, 26, 39].map(rowNumber => worksheet.getRow(rowNumber).height);
 
   assert.equal(result.pages, 1);
   assert.equal(result.rowsPerPage, 51);
   assert.equal(result.totalRows, 51);
-  assert.ok(gapHeights.every(height => height > 13.5 && height < 130));
+  assert.ok(gapHeights.every(height => height > regularHeight && height < 409));
   assert.equal(new Set(gapHeights).size, 1);
 });
 

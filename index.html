@@ -11437,13 +11437,24 @@ function splitExport() {
   const marginRight = toInchValue(document.getElementById('splitMarginRight').value) || 0.75;
   const printableWidth = Math.max(1, pageWidth - (marginLeft + marginRight) * 72);
   const printableHeight = Math.max(1, pageHeight - (marginTop + marginBottom) * 72);
-  // Excel column widths are character-based. 4.75pt matches the printable
-  // width used by the target spreadsheet preview closely enough to keep the
-  // selected number of table slots on the same page.
+  // Excel column widths are character-based. 5.25pt is the standard body
+  // font approximation used to estimate the fit-to-width scale.
   const totalColumnWidth = Array.from({ length: maxCols }, (_, c) => {
-    return (Number(ws.getColumn(c + 1).width) || 8.43) * 4.75;
+    return (Number(ws.getColumn(c + 1).width) || 8.43) * 5.25;
   }).reduce((sum, width) => sum + width, 0);
   const fitScale = Math.min(1, printableWidth / Math.max(1, totalColumnWidth));
+  // Some spreadsheet print engines fit the columns but leave explicit row
+  // heights unchanged. Compact fixed table rows when the width fit is tight,
+  // then give the recovered height to the printable gaps below.
+  const fixedRowScale = Math.max(0.85, Math.min(1, fitScale / 0.83));
+  if (fixedRowScale < 1) {
+    for (let r = 0; r < rows.length; r++) {
+      if (isBlankRow[r]) continue;
+      const scaledHeight = (rowHeights[r] != null ? rowHeights[r] : stdH) * fixedRowScale;
+      rowHeights[r] = scaledHeight;
+      ws.getRow(r + 1).height = scaledHeight;
+    }
+  }
   const targetPageHeight = printableHeight / Math.max(0.1, fitScale);
   const gapPages = [];
   const tailPages = [];
