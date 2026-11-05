@@ -269,12 +269,29 @@ test('export keeps four wide table slots on one print page', () => {
   }
   const { result } = runSplitExecute(data, 50, 4, 2);
   const worksheet = runSplitExport(result);
-  const gapHeights = [13, 26].map(rowNumber => worksheet.getRow(rowNumber).height);
+  const gapHeights = [13, 26, 39].map(rowNumber => worksheet.getRow(rowNumber).height);
 
   assert.equal(result.pages, 1);
-  assert.equal(result.totalRows, 50);
+  assert.equal(result.rowsPerPage, 51);
+  assert.equal(result.totalRows, 51);
   assert.ok(gapHeights.every(height => height > 13.5 && height < 130));
   assert.equal(new Set(gapHeights).size, 1);
+});
+
+test('export keeps missing trailing slots white while sharing one gap height', () => {
+  const data = [['组']];
+  for (let index = 1; index <= 13; index++) data.push([`G${index}`]);
+  const { result } = runSplitExecute(data, 20, 4);
+  const worksheet = runSplitExport(result);
+  const gapRows = [3, 9, 15, 23, 29, 35, 43, 49, 55, 63, 69, 75];
+  const gapHeights = gapRows.map(rowNumber => worksheet.getRow(rowNumber).height);
+
+  assert.equal(result.pages, 4);
+  assert.equal(new Set(gapHeights).size, 1);
+  assert.equal(worksheet.getRow(39).height, 13.5);
+  assert.equal(worksheet.getRow(40).height, 13.5);
+  assert.equal(worksheet.getRow(79).height, 13.5);
+  assert.equal(worksheet.getRow(80).height, 13.5);
 });
 
 test('table output stops when aligned slots cannot fit the selected page size', () => {
@@ -290,7 +307,7 @@ test('split table UI exposes both page ordering choices and passes the selected 
   assert.match(html, /onclick="splitSetOrder\('page'\)"/);
   assert.match(html, /splitBuildPageGroups\(tableGroups, tablesPerPage, splitOrder\)/);
   assert.match(html, /splitBuildCutLayout\(pageGroupsList, headerRows, rowsPerPage\)/);
-  assert.match(html, /appendBlankRows\(pageLayout\.slotRows\[gi\], mergeFirst && headerRows > 0\)/);
+  assert.match(html, /appendBlankRows\(pageLayout\.slotRows\[gi\], mergeFirst && headerRows > 0, true\)/);
   assert.match(html, /cutLayout\.pageLayouts\?\.\[pageIndex\]/);
   assert.match(html, /cutAfterRows: Array\.from\(cutAfterRows\)/);
   assert.match(html, /沿虚线裁剪/);
