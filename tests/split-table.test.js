@@ -246,6 +246,18 @@ test('table output pads shorter groups and repeats each cut line at the same row
   assert.equal(worksheet.pageSetup.fitToHeight, 0);
 });
 
+test('export expands blank gaps after fitting all columns to one page', () => {
+  const data = [['组'], ['A'], ['B'], ['C'], ['D']];
+  const { result } = runSplitExecute(data, 20, 4);
+  const worksheet = runSplitExport(result);
+  const regularHeight = worksheet.getRow(2).height;
+  const gapHeights = [3, 9, 15].map(rowNumber => worksheet.getRow(rowNumber).height);
+
+  assert.ok(gapHeights.every(height => height > regularHeight));
+  assert.equal(new Set(gapHeights).size, 1);
+  assert.ok(gapHeights[0] > 40);
+});
+
 test('table output stops when aligned slots cannot fit the selected page size', () => {
   const data = [['组'], ['A'], ['A'], ['A'], ['A'], ['B'], ['C'], ['C'], ['D'], ['D'], ['D']];
   const { result, toasts } = runSplitExecute(data, 8);

@@ -11412,6 +11412,47 @@ function splitExport() {
     }
   }
 
+  // fitToWidth scales the whole sheet horizontally, including row heights.
+  // Use the resulting scale to enlarge blank gap rows so each printed page
+  // uses its available height while keeping every table row unchanged.
+  const paperDimensions = {
+    A4: [595.28, 841.89],
+    A3: [841.89, 1190.55],
+    B5: [498.90, 708.66]
+  };
+  const toInchValue = value => (parseFloat(value) || 0) / 2.54;
+  const paperSize = paperDimensions[splitPaper] || paperDimensions.A4;
+  const pageWidth = splitOrient === 'landscape' ? paperSize[1] : paperSize[0];
+  const pageHeight = splitOrient === 'landscape' ? paperSize[0] : paperSize[1];
+  const marginTop = toInchValue(document.getElementById('splitMarginTop').value) || 1;
+  const marginBottom = toInchValue(document.getElementById('splitMarginBottom').value) || 1;
+  const marginLeft = toInchValue(document.getElementById('splitMarginLeft').value) || 0.75;
+  const marginRight = toInchValue(document.getElementById('splitMarginRight').value) || 0.75;
+  const printableWidth = Math.max(1, pageWidth - (marginLeft + marginRight) * 72);
+  const printableHeight = Math.max(1, pageHeight - (marginTop + marginBottom) * 72);
+  // Excel column widths are character-based. 5.25pt is the standard body
+  // font approximation used to estimate the fit-to-width scale.
+  const totalColumnWidth = Array.from({ length: maxCols }, (_, c) => {
+    return (Number(ws.getColumn(c + 1).width) || 8.43) * 5.25;
+  }).reduce((sum, width) => sum + width, 0);
+  const fitScale = Math.min(1, printableWidth / Math.max(1, totalColumnWidth));
+  const targetPageHeight = printableHeight / Math.max(0.1, fitScale);
+  for (let pageStart = 0; pageStart < rows.length; pageStart += rowsPerPage) {
+    const pageEnd = Math.min(rows.length, pageStart + rowsPerPage);
+    const blankRows = [];
+    let fixedHeight = 0;
+    for (let r = pageStart; r < pageEnd; r++) {
+      if (isBlankRow[r]) blankRows.push(r);
+      else fixedHeight += rowHeights[r] != null ? rowHeights[r] : stdH;
+    }
+    if (!blankRows.length) continue;
+    const gapHeight = Math.min(409, Math.max(stdH, (targetPageHeight - fixedHeight) / blankRows.length));
+    for (const r of blankRows) {
+      rowHeights[r] = gapHeight;
+      ws.getRow(r + 1).height = gapHeight;
+    }
+  }
+
   // Page breaks
   if (rows.length > rowsPerPage) {
     for (let br = rowsPerPage; br < rows.length; br += rowsPerPage) {
