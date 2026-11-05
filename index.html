@@ -10738,22 +10738,13 @@ function splitBuildCutLayout(pageGroupsList, headerRows, rowsPerPage) {
     return { requiredRows: pageRequiredRows, slotRows, cutRows };
   };
   const layout = buildGapLayout(minimumSlotRows);
-  // A final page may contain fewer tables than the selected slot count. Do
-  // not preserve those trailing empty slots: compact the real tables and
-  // redistribute their rows into the gaps between them.
-  const pageLayouts = pageGroupsList.map(pageGroups => {
-    let lastGroupSlot = pageGroups.length - 1;
-    while (lastGroupSlot >= 0 && pageGroups[lastGroupSlot] == null) lastGroupSlot--;
-    if (lastGroupSlot < 0) {
-      return { groups: [null], slotRows: [rowsPerPage], cutRows: [] };
-    }
-    if (lastGroupSlot === slotCount - 1) {
-      return { groups: pageGroups, slotRows: layout.slotRows, cutRows: layout.cutRows };
-    }
-    const groups = pageGroups.slice(0, lastGroupSlot + 1);
-    const compactLayout = buildGapLayout(groups.map(group => Math.max(1, headerRows + group.length)));
-    return { groups, slotRows: compactLayout.slotRows, cutRows: compactLayout.cutRows };
-  });
+  // Keep every physical slot on every page. A missing trailing group remains
+  // a white slot so the selected four-table cutting layout never changes.
+  const pageLayouts = pageGroupsList.map(pageGroups => ({
+    groups: pageGroups,
+    slotRows: layout.slotRows,
+    cutRows: layout.cutRows
+  }));
   return { requiredRows, slotRows: layout.slotRows, cutRows: layout.cutRows, pageLayouts };
 }
 

@@ -183,7 +183,7 @@ test('cut layout distributes spare rows between tables instead of below the last
   assert.equal(layout.slotRows.reduce((sum, count) => sum + count, 0), 20);
 });
 
-test('incomplete pages compact trailing empty slots and reuse their rows between tables', () => {
+test('incomplete pages preserve trailing empty slots for the fixed cutting layout', () => {
   const { splitBuildCutLayout } = loadSplitHelpers();
   const pages = [
     [['A'], ['B'], ['C'], ['D']],
@@ -191,22 +191,22 @@ test('incomplete pages compact trailing empty slots and reuse their rows between
   ];
   const layout = JSON.parse(JSON.stringify(splitBuildCutLayout(pages, 1, 20)));
 
-  assert.deepEqual(layout.pageLayouts[1].groups, [['E'], ['F'], ['G']]);
-  assert.deepEqual(layout.pageLayouts[1].slotRows, [9, 9, 2]);
-  assert.deepEqual(layout.pageLayouts[1].cutRows, [9, 18]);
+  assert.deepEqual(layout.pageLayouts[1].groups, [['E'], ['F'], ['G'], null]);
+  assert.deepEqual(layout.pageLayouts[1].slotRows, [6, 6, 6, 2]);
+  assert.deepEqual(layout.pageLayouts[1].cutRows, [6, 12, 18]);
   assert.equal(layout.pageLayouts[1].slotRows.reduce((sum, count) => sum + count, 0), 20);
 });
 
-test('split output ends incomplete pages with table rows', () => {
+test('split output preserves four slots on incomplete pages', () => {
   const data = [['组']];
   for (let index = 1; index <= 13; index++) data.push([`G${index}`]);
   const { result } = runSplitExecute(data, 20, 4);
 
   assert.equal(result.pages, 4);
   assert.equal(result.totalRows, 80);
-  assert.equal(result.isBlankRow[39], false);
-  assert.equal(result.isBlankRow[59], false);
-  assert.equal(result.isBlankRow[79], false);
+  assert.equal(result.isBlankRow[39], true);
+  assert.equal(result.isBlankRow[59], true);
+  assert.equal(result.isBlankRow[79], true);
 });
 
 test('cut layout refuses pages that would split a long table', () => {
