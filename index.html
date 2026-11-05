@@ -11430,10 +11430,11 @@ function splitExport() {
   const marginRight = toInchValue(document.getElementById('splitMarginRight').value) || 0.75;
   const printableWidth = Math.max(1, pageWidth - (marginLeft + marginRight) * 72);
   const printableHeight = Math.max(1, pageHeight - (marginTop + marginBottom) * 72);
-  // Excel column widths are character-based. 5.25pt is the standard body
-  // font approximation used to estimate the fit-to-width scale.
+  // Excel column widths are character-based. 4.75pt matches the printable
+  // width used by the target spreadsheet preview closely enough to keep the
+  // selected number of table slots on the same page.
   const totalColumnWidth = Array.from({ length: maxCols }, (_, c) => {
-    return (Number(ws.getColumn(c + 1).width) || 8.43) * 5.25;
+    return (Number(ws.getColumn(c + 1).width) || 8.43) * 4.75;
   }).reduce((sum, width) => sum + width, 0);
   const fitScale = Math.min(1, printableWidth / Math.max(1, totalColumnWidth));
   const targetPageHeight = printableHeight / Math.max(0.1, fitScale);

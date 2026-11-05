@@ -46,9 +46,9 @@ function loadSplitHelpers(values = {}) {
   return context.api;
 }
 
-function runSplitExecute(data, rowsPerPage, tablesPerPage = 2) {
+function runSplitExecute(data, rowsPerPage, tablesPerPage = 2, headerRows = 1) {
   const elements = {
-    splitHeaderRows: { value: '1' }, splitTablesPerPage: { value: String(tablesPerPage) },
+    splitHeaderRows: { value: String(headerRows) }, splitTablesPerPage: { value: String(tablesPerPage) },
     splitRowsPerPage: { value: String(rowsPerPage) }, splitRowHeight: { value: '13.5' },
     splitMergeFirst: { checked: false }, splitFirstRowH: { value: '20' },
     splitCol: { value: '1' }, splitStats: { innerHTML: '' },
@@ -256,6 +256,25 @@ test('export expands blank gaps after fitting all columns to one page', () => {
   assert.ok(gapHeights.every(height => height > regularHeight));
   assert.equal(new Set(gapHeights).size, 1);
   assert.ok(gapHeights[0] > 40);
+});
+
+test('export keeps four wide table slots on one print page', () => {
+  const headers = [
+    '12345678901234567890123', '1234567890123456789012', '1234567890', '12345678',
+    '123456789', '123456789', '12345678901234567', '123456789012345'
+  ];
+  const data = [headers, headers.map(() => '')];
+  for (const group of ['A', 'B', 'C', 'D']) {
+    for (let index = 0; index < 10; index++) data.push([group, index, 1, 2, 3, 4, 5, 6]);
+  }
+  const { result } = runSplitExecute(data, 50, 4, 2);
+  const worksheet = runSplitExport(result);
+  const gapHeights = [13, 26].map(rowNumber => worksheet.getRow(rowNumber).height);
+
+  assert.equal(result.pages, 1);
+  assert.equal(result.totalRows, 50);
+  assert.ok(gapHeights.every(height => height > 13.5 && height < 130));
+  assert.equal(new Set(gapHeights).size, 1);
 });
 
 test('table output stops when aligned slots cannot fit the selected page size', () => {
