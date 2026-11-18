@@ -11431,21 +11431,30 @@ function splitExport() {
   const toInchValue = value => (parseFloat(value) || 0) / 2.54;
   const paperSize = paperDimensions[splitPaper] || paperDimensions.A4;
   const pageWidth = splitOrient === 'landscape' ? paperSize[1] : paperSize[0];
+  const pageHeight = splitOrient === 'landscape' ? paperSize[0] : paperSize[1];
+  const marginTop = toInchValue(document.getElementById('splitMarginTop').value) || 1;
+  const marginBottom = toInchValue(document.getElementById('splitMarginBottom').value) || 1;
   const marginLeft = toInchValue(document.getElementById('splitMarginLeft').value) || 0.75;
   const marginRight = toInchValue(document.getElementById('splitMarginRight').value) || 0.75;
   const printableWidth = Math.max(1, pageWidth - (marginLeft + marginRight) * 72);
+  const printableHeight = Math.max(1, pageHeight - (marginTop + marginBottom) * 72);
   // Excel column widths are character-based. 5.25pt is the standard body
   // font approximation used to estimate the fit-to-width scale.
   const totalColumnWidth = Array.from({ length: maxCols }, (_, c) => {
     return (Number(ws.getColumn(c + 1).width) || 8.43) * 5.25;
   }).reduce((sum, width) => sum + width, 0);
   const fitScale = Math.min(1, printableWidth / Math.max(1, totalColumnWidth));
-  // Some spreadsheet print engines fit the columns but leave explicit row
-  // heights unchanged. Compact every row by the same factor when the width
-  // fit is tight; keeping the factor identical preserves fixed slot heights.
-  const fixedRowScale = Math.max(0.85, Math.min(1, fitScale / 0.83));
+  // Excel's fit-to-width can scale row heights along with columns. Calculate
+  // one target page height before that scale, then apply one common factor to
+  // every row. This fills the printable area without moving cut lines.
+  const targetPageHeight = printableHeight / Math.max(0.1, fitScale);
+  const firstPageRows = Math.min(rowsPerPage, rows.length);
+  const basePageHeight = rowHeights.slice(0, firstPageRows).reduce((sum, height) => {
+    return sum + (height != null ? height : stdH);
+  }, 0);
+  const uniformPageScale = basePageHeight > 0 ? targetPageHeight / basePageHeight : 1;
   for (let r = 0; r < rows.length; r++) {
-    const scaledHeight = (rowHeights[r] != null ? rowHeights[r] : stdH) * fixedRowScale;
+    const scaledHeight = (rowHeights[r] != null ? rowHeights[r] : stdH) * uniformPageScale;
     rowHeights[r] = scaledHeight;
     ws.getRow(r + 1).height = scaledHeight;
   }

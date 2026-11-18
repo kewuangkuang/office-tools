@@ -298,8 +298,25 @@ test('export keeps physical cut lines at the same height on every page', () => {
   };
   const firstPageCuts = [8, 16, 24].map(cutRow => pageHeightBeforeCut(1, cutRow));
   const secondPageCuts = [38, 46, 54].map(cutRow => pageHeightBeforeCut(31, cutRow));
+  const firstPageHeight = pageHeightBeforeCut(1, 30);
+  const secondPageHeight = pageHeightBeforeCut(31, 60);
 
   assert.deepEqual(secondPageCuts, firstPageCuts);
+  assert.equal(secondPageHeight, firstPageHeight);
+});
+
+test('export fills the printable page with one uniform row scale', () => {
+  const data = [['组'], ['A'], ['B'], ['C'], ['D']];
+  const { result } = runSplitExecute(data, 20, 4);
+  const worksheet = runSplitExport(result);
+  const pageHeight = Array.from({ length: result.rowsPerPage }, (_, index) => {
+    return worksheet.getRow(index + 1).height;
+  }).reduce((sum, height) => sum + height, 0);
+  const printableHeight = 841.89 - (2.54 / 2.54) * 72 * 2;
+
+  assert.ok(Math.abs(pageHeight - printableHeight) < 0.001);
+  assert.equal(worksheet.getRow(3).height, worksheet.getRow(2).height);
+  assert.ok(worksheet.getRow(2).height > 13.5);
 });
 
 test('export keeps missing trailing slots white while sharing one gap height', () => {
@@ -312,10 +329,10 @@ test('export keeps missing trailing slots white while sharing one gap height', (
 
   assert.equal(result.pages, 4);
   assert.equal(new Set(gapHeights).size, 1);
-  assert.equal(worksheet.getRow(39).height, 13.5);
-  assert.equal(worksheet.getRow(40).height, 13.5);
-  assert.equal(worksheet.getRow(79).height, 13.5);
-  assert.equal(worksheet.getRow(80).height, 13.5);
+  assert.equal(worksheet.getRow(39).height, worksheet.getRow(2).height);
+  assert.equal(worksheet.getRow(40).height, worksheet.getRow(2).height);
+  assert.equal(worksheet.getRow(79).height, worksheet.getRow(2).height);
+  assert.equal(worksheet.getRow(80).height, worksheet.getRow(2).height);
 });
 
 test('export keeps a short final table in its fixed physical slot', () => {
@@ -333,7 +350,7 @@ test('export keeps a short final table in its fixed physical slot', () => {
   assert.equal(result.pages, 2);
   assert.equal(result.totalRows, 100);
   assert.equal(worksheet.getRow(90).height, worksheet.getRow(2).height);
-  assert.equal(worksheet.getRow(100).height, 13.5);
+  assert.equal(worksheet.getRow(100).height, worksheet.getRow(2).height);
 });
 
 test('table output stops when aligned slots cannot fit the selected page size', () => {
