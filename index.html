@@ -3502,7 +3502,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       <div class="card-title"><span class="icon">✅</span> 拆分完成</div>
       <div class="result-stats" id="splitStats"></div>
       <div class="preview-label">👁 拆分预览（按当前拆分方式显示）</div>
-      <div id="splitCutGuideInfo" style="display:none;font-size:12px;color:var(--gray-500);margin-bottom:8px;">✂ 红色虚线是裁剪线；每页都在相同的纸面位置，空白行不会拉伸，导出的 Excel 也会显示。</div>
+      <div id="splitCutGuideInfo" style="display:none;font-size:12px;color:var(--gray-500);margin-bottom:8px;">✂ 红色虚线是裁剪线；每页都在相同的纸面位置，所有行按同一比例缩放，导出的 Excel 也会显示。</div>
       <div class="preview-table-wrap" style="max-height:400px;">
         <div id="splitPreviewTable"></div>
       </div>
@@ -11447,7 +11447,7 @@ function splitExport() {
   // Excel's fit-to-width can scale row heights along with columns. Calculate
   // one target page height before that scale, then apply one common factor to
   // every row. This fills the printable area without moving cut lines.
-  const targetPageHeight = printableHeight / Math.max(0.1, fitScale);
+  const targetPageHeight = printableHeight / fitScale;
   const firstPageRows = Math.min(rowsPerPage, rows.length);
   const basePageHeight = rowHeights.slice(0, firstPageRows).reduce((sum, height) => {
     return sum + (height != null ? height : stdH);

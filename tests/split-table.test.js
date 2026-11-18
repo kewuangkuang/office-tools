@@ -319,6 +319,28 @@ test('export fills the printable page with one uniform row scale', () => {
   assert.ok(worksheet.getRow(2).height > 13.5);
 });
 
+test('export fills the printable page for extremely wide tables', () => {
+  const header = Array.from({ length: 100 }, () => 'X'.repeat(50));
+  const data = [header];
+  for (const name of ['A', 'B', 'C', 'D']) {
+    data.push([name].concat(Array.from({ length: 99 }, () => 'value')));
+  }
+  const { result } = runSplitExecute(data, 20, 4);
+  const worksheet = runSplitExport(result);
+  const pageHeight = Array.from({ length: result.rowsPerPage }, (_, index) => {
+    return worksheet.getRow(index + 1).height;
+  }).reduce((sum, height) => sum + height, 0);
+  const printableWidth = 595.28 - ((1.91 / 2.54) * 72 * 2);
+  const printableHeight = 841.89 - (2.54 / 2.54) * 72 * 2;
+  const totalColumnWidth = Array.from({ length: 100 }, (_, index) => {
+    return worksheet.getColumn(index + 1).width * 5.25;
+  }).reduce((sum, width) => sum + width, 0);
+  const fitScale = Math.min(1, printableWidth / totalColumnWidth);
+
+  assert.ok(fitScale < 0.1);
+  assert.ok(Math.abs(pageHeight * fitScale - printableHeight) < 0.001);
+});
+
 test('export keeps missing trailing slots white while sharing one gap height', () => {
   const data = [['组']];
   for (let index = 1; index <= 13; index++) data.push([`G${index}`]);
