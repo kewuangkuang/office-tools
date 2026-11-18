@@ -11453,8 +11453,17 @@ function splitExport() {
     return sum + (height != null ? height : stdH);
   }, 0);
   const uniformPageScale = basePageHeight > 0 ? targetPageHeight / basePageHeight : 1;
+  const maxExcelRowHeight = 409;
+  const maxBaseRowHeight = rowHeights.reduce((max, height) => {
+    return Math.max(max, height != null ? height : stdH);
+  }, 0);
+  const maxAllowedScale = maxBaseRowHeight > 0 ? maxExcelRowHeight / maxBaseRowHeight : uniformPageScale;
+  const pageScale = Math.min(uniformPageScale, maxAllowedScale);
+  if (pageScale < uniformPageScale && typeof showToast === 'function') {
+    showToast('表格过宽，Excel 单行高度已限制为 409 磅；建议减少列宽或改用横向打印', 'info');
+  }
   for (let r = 0; r < rows.length; r++) {
-    const scaledHeight = (rowHeights[r] != null ? rowHeights[r] : stdH) * uniformPageScale;
+    const scaledHeight = (rowHeights[r] != null ? rowHeights[r] : stdH) * pageScale;
     rowHeights[r] = scaledHeight;
     ws.getRow(r + 1).height = scaledHeight;
   }

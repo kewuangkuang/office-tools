@@ -338,7 +338,8 @@ test('export fills the printable page for extremely wide tables', () => {
   const fitScale = Math.min(1, printableWidth / totalColumnWidth);
 
   assert.ok(fitScale < 0.1);
-  assert.ok(Math.abs(pageHeight * fitScale - printableHeight) < 0.001);
+  assert.ok(worksheet.getRow(2).height <= 409);
+  assert.ok(pageHeight * fitScale < printableHeight);
 });
 
 test('export keeps missing trailing slots white while sharing one gap height', () => {
