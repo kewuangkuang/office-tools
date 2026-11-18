@@ -24,6 +24,7 @@ test('split table keeps concise dynamic guidance and explicit units', () => {
   assert.match(splitPage, /id="splitColUnit">列<\/span>/);
   assert.match(html, /unit\.textContent = '行'/);
   assert.match(html, /unit\.textContent = '列'/);
+  assert.match(html, /每页都在相同的纸面位置，空白行不会拉伸/);
 });
 
 test('selected split mode keeps nested text readable on its light background', () => {

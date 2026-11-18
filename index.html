@@ -3502,7 +3502,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       <div class="card-title"><span class="icon">✅</span> 拆分完成</div>
       <div class="result-stats" id="splitStats"></div>
       <div class="preview-label">👁 拆分预览（按当前拆分方式显示）</div>
-      <div id="splitCutGuideInfo" style="display:none;font-size:12px;color:var(--gray-500);margin-bottom:8px;">✂ 红色虚线是裁剪线；每页都在相同的行数位置，导出的 Excel 也会显示。</div>
+      <div id="splitCutGuideInfo" style="display:none;font-size:12px;color:var(--gray-500);margin-bottom:8px;">✂ 红色虚线是裁剪线；每页都在相同的纸面位置，空白行不会拉伸，导出的 Excel 也会显示。</div>
       <div class="preview-table-wrap" style="max-height:400px;">
         <div id="splitPreviewTable"></div>
       </div>
@@ -11420,8 +11420,9 @@ function splitExport() {
   }
 
   // fitToWidth scales the whole sheet horizontally, including row heights.
-  // Use the resulting scale to enlarge blank gap rows so each printed page
-  // uses its available height while keeping every table row unchanged.
+  // Keep every row in a page on the same fixed scale. Stretching only blank
+  // rows makes the physical cut lines move when adjacent tables have
+  // different lengths, even though the row numbers are aligned.
   const paperDimensions = {
     A4: [595.28, 841.89],
     A3: [841.89, 1190.55],
@@ -11430,13 +11431,9 @@ function splitExport() {
   const toInchValue = value => (parseFloat(value) || 0) / 2.54;
   const paperSize = paperDimensions[splitPaper] || paperDimensions.A4;
   const pageWidth = splitOrient === 'landscape' ? paperSize[1] : paperSize[0];
-  const pageHeight = splitOrient === 'landscape' ? paperSize[0] : paperSize[1];
-  const marginTop = toInchValue(document.getElementById('splitMarginTop').value) || 1;
-  const marginBottom = toInchValue(document.getElementById('splitMarginBottom').value) || 1;
   const marginLeft = toInchValue(document.getElementById('splitMarginLeft').value) || 0.75;
   const marginRight = toInchValue(document.getElementById('splitMarginRight').value) || 0.75;
   const printableWidth = Math.max(1, pageWidth - (marginLeft + marginRight) * 72);
-  const printableHeight = Math.max(1, pageHeight - (marginTop + marginBottom) * 72);
   // Excel column widths are character-based. 5.25pt is the standard body
   // font approximation used to estimate the fit-to-width scale.
   const totalColumnWidth = Array.from({ length: maxCols }, (_, c) => {
@@ -11444,63 +11441,13 @@ function splitExport() {
   }).reduce((sum, width) => sum + width, 0);
   const fitScale = Math.min(1, printableWidth / Math.max(1, totalColumnWidth));
   // Some spreadsheet print engines fit the columns but leave explicit row
-  // heights unchanged. Compact fixed table rows when the width fit is tight,
-  // then give the recovered height to the printable gaps below.
+  // heights unchanged. Compact every row by the same factor when the width
+  // fit is tight; keeping the factor identical preserves fixed slot heights.
   const fixedRowScale = Math.max(0.85, Math.min(1, fitScale / 0.83));
-  if (fixedRowScale < 1) {
-    for (let r = 0; r < rows.length; r++) {
-      if (isBlankRow[r]) continue;
-      const scaledHeight = (rowHeights[r] != null ? rowHeights[r] : stdH) * fixedRowScale;
-      rowHeights[r] = scaledHeight;
-      ws.getRow(r + 1).height = scaledHeight;
-    }
-  }
-  const targetPageHeight = printableHeight / Math.max(0.1, fitScale);
-  const gapPages = [];
-  const tailPages = [];
-  for (let pageStart = 0; pageStart < rows.length; pageStart += rowsPerPage) {
-    const pageEnd = Math.min(rows.length, pageStart + rowsPerPage);
-    const gapRows = [];
-    const tailRows = [];
-    let fixedHeight = 0;
-    for (let r = pageStart; r < pageEnd; r++) {
-      if (isBlankRow[r] && isTailFillRow[r]) tailRows.push(r);
-      else if (isBlankRow[r] && !isReservedSlotRow[r]) gapRows.push(r);
-      else fixedHeight += rowHeights[r] != null ? rowHeights[r] : stdH;
-    }
-    if (gapRows.length) {
-      gapPages.push({ gapRows, capacity: (targetPageHeight - fixedHeight) / gapRows.length });
-    }
-    if (tailRows.length) tailPages.push({ gapRows, tailRows, fixedHeight });
-  }
-  // Use one common height for every adjustable gap. Per-page calculation made
-  // each page distribute its spare height differently, which broke the fixed
-  // four-slot cutting template. The smallest capacity keeps all pages inside
-  // their print area; any remaining space stays white at the page bottom.
-  if (gapPages.length) {
-    const commonGapHeight = Math.min(409, Math.max(stdH, Math.min(...gapPages.map(page => page.capacity))));
-    for (const page of gapPages) {
-      for (const r of page.gapRows) {
-        rowHeights[r] = commonGapHeight;
-        ws.getRow(r + 1).height = commonGapHeight;
-      }
-    }
-    for (const page of tailPages) {
-      const remainingHeight = targetPageHeight - page.fixedHeight - commonGapHeight * page.gapRows.length;
-      const tailHeight = Math.min(409, Math.max(stdH, remainingHeight / page.tailRows.length));
-      for (const r of page.tailRows) {
-        rowHeights[r] = tailHeight;
-        ws.getRow(r + 1).height = tailHeight;
-      }
-    }
-  } else {
-    for (const page of tailPages) {
-      const tailHeight = Math.min(409, Math.max(stdH, (targetPageHeight - page.fixedHeight) / page.tailRows.length));
-      for (const r of page.tailRows) {
-        rowHeights[r] = tailHeight;
-        ws.getRow(r + 1).height = tailHeight;
-      }
-    }
+  for (let r = 0; r < rows.length; r++) {
+    const scaledHeight = (rowHeights[r] != null ? rowHeights[r] : stdH) * fixedRowScale;
+    rowHeights[r] = scaledHeight;
+    ws.getRow(r + 1).height = scaledHeight;
   }
 
   // Page breaks

@@ -246,19 +246,18 @@ test('table output pads shorter groups and repeats each cut line at the same row
   assert.equal(worksheet.pageSetup.fitToHeight, 0);
 });
 
-test('export expands blank gaps after fitting all columns to one page', () => {
+test('export keeps blank gaps at a fixed row height after fitting columns', () => {
   const data = [['组'], ['A'], ['B'], ['C'], ['D']];
   const { result } = runSplitExecute(data, 20, 4);
   const worksheet = runSplitExport(result);
   const regularHeight = worksheet.getRow(2).height;
   const gapHeights = [3, 9, 15].map(rowNumber => worksheet.getRow(rowNumber).height);
 
-  assert.ok(gapHeights.every(height => height > regularHeight));
+  assert.ok(gapHeights.every(height => height === regularHeight));
   assert.equal(new Set(gapHeights).size, 1);
-  assert.ok(gapHeights[0] > 40);
 });
 
-test('export keeps four wide table slots on one print page', () => {
+test('export keeps four wide table slots at fixed physical heights', () => {
   const headers = [
     '12345678901234567890123', '1234567890123456789012', '1234567890', '12345678',
     '123456789', '123456789', '12345678901234567', '123456789012345'
@@ -275,8 +274,32 @@ test('export keeps four wide table slots on one print page', () => {
   assert.equal(result.pages, 1);
   assert.equal(result.rowsPerPage, 51);
   assert.equal(result.totalRows, 51);
-  assert.ok(gapHeights.every(height => height > regularHeight && height < 409));
+  assert.ok(gapHeights.every(height => height === regularHeight));
   assert.equal(new Set(gapHeights).size, 1);
+});
+
+test('export keeps physical cut lines at the same height on every page', () => {
+  const data = [['组']];
+  const groups = [
+    ['A', 1], ['B', 5], ['C', 1], ['D', 5],
+    ['E', 1], ['F', 5], ['G', 1], ['H', 5]
+  ];
+  for (const [name, count] of groups) {
+    for (let index = 0; index < count; index++) data.push([name]);
+  }
+  const { result } = runSplitExecute(data, 30, 4);
+  const worksheet = runSplitExport(result);
+  const pageHeightBeforeCut = (pageStartRow, cutRow) => {
+    let height = 0;
+    for (let rowNumber = pageStartRow; rowNumber <= cutRow; rowNumber++) {
+      height += worksheet.getRow(rowNumber).height;
+    }
+    return height;
+  };
+  const firstPageCuts = [8, 16, 24].map(cutRow => pageHeightBeforeCut(1, cutRow));
+  const secondPageCuts = [38, 46, 54].map(cutRow => pageHeightBeforeCut(31, cutRow));
+
+  assert.deepEqual(secondPageCuts, firstPageCuts);
 });
 
 test('export keeps missing trailing slots white while sharing one gap height', () => {
@@ -295,7 +318,7 @@ test('export keeps missing trailing slots white while sharing one gap height', (
   assert.equal(worksheet.getRow(80).height, 13.5);
 });
 
-test('export moves a short final table down by expanding its leading white space', () => {
+test('export keeps a short final table in its fixed physical slot', () => {
   const data = [['组']];
   const groups = [
     ['A', 1], ['B', 10], ['C', 10], ['D', 10],
@@ -309,7 +332,7 @@ test('export moves a short final table down by expanding its leading white space
 
   assert.equal(result.pages, 2);
   assert.equal(result.totalRows, 100);
-  assert.ok(worksheet.getRow(90).height > worksheet.getRow(2).height, `${worksheet.getRow(90).height} <= ${worksheet.getRow(2).height}`);
+  assert.equal(worksheet.getRow(90).height, worksheet.getRow(2).height);
   assert.equal(worksheet.getRow(100).height, 13.5);
 });
 
